@@ -1,3 +1,9 @@
+import requests
+from bs4 import BeautifulSoup
+import json
+import os
+
+
 name: Diretta Bot
 
 on:
