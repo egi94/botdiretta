@@ -39,7 +39,12 @@ def check_team(url):
         home = m.select_one(".home-team").text.strip()
         away = m.select_one(".away-team").text.strip()
         time = m.select_one(".match-time").text.strip()
-        results.append(f"{home} vs {away} - {time}")
+
+        # Estrazione data
+        date_el = m.select_one(".match-date")
+        date = date_el.text.strip() if date_el else "Data N/D"
+
+        results.append(f"{home} vs {away} - {time} - {date}")
 
     return results
 
@@ -54,7 +59,6 @@ def main():
 
         old_matches = old_data.get(team, [])
 
-        # trova partite nuove
         new_only = [m for m in matches if m not in old_matches]
 
         for match in new_only:
