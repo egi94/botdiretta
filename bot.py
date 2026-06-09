@@ -3,36 +3,65 @@ from bs4 import BeautifulSoup
 import json
 import os
 
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
+CHAT_ID = os.getenv("CHAT_ID")
+TEAMS = json.loads(os.getenv("TEAMS"))
 
-name: Diretta Bot
+MATCHES_FILE = "matches.json"
 
-on:
-  schedule:
-    - cron: "*/10 * * * *"   # ogni 10 minuti
-  workflow_dispatch:
 
-jobs:
-  run-bot:
-    runs-on: ubuntu-latest
+def load_matches():
+    if not os.path.exists(MATCHES_FILE):
+        return {}
+    with open(MATCHES_FILE, "r") as f:
+        return json.load(f)
 
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
+def save_matches(data):
+    with open(MATCHES_FILE, "w") as f:
+        json.dump(data, f, indent=4)
 
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install requests beautifulsoup4
 
-      - name: Run bot
-        env:
-          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
-          CHAT_ID: ${{ secrets.CHAT_ID }}
-          TEAMS: ${{ secrets.TEAMS }}
-        run: |
-          python bot.py
+def send_message(text):
+    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+    payload = {"chat_id": CHAT_ID, "text": text}
+    requests.post(url, json=payload)
+
+
+def check_team(url):
+    response = requests.get(url)
+    soup = BeautifulSoup(response.text, "html.parser")
+
+    matches = soup.select(".match-row")
+    results = []
+
+    for m in matches:
+        home = m.select_one(".home-team").text.strip()
+        away = m.select_one(".away-team").text.strip()
+        time = m.select_one(".match-time").text.strip()
+        results.append(f"{home} vs {away} - {time}")
+
+    return results
+
+
+def main():
+    old_data = load_matches()
+    new_data = {}
+
+    for team, url in TEAMS.items():
+        matches = check_team(url)
+        new_data[team] = matches
+
+        old_matches = old_data.get(team, [])
+
+        # trova partite nuove
+        new_only = [m for m in matches if m not in old_matches]
+
+        for match in new_only:
+            send_message(f"Nuova partita trovata per {team}:\n{match}")
+
+    save_matches(new_data)
+
+
+if __name__ == "__main__":
+    main()
