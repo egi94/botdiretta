@@ -1,6 +1,8 @@
 name: Diretta Bot
 
 on:
+  schedule:
+    - cron: "*/10 * * * *"   # ogni 10 minuti
   workflow_dispatch:
 
 jobs:
