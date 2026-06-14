@@ -15,7 +15,7 @@ TEAMS = json.loads(os.getenv("TEAMS", "{}"))
 
 MATCHES_FILE = "matches.json"
 
-# Tabelle italiane (compatibili con GitHub Actions)
+# Tabelle italiane
 ITALIAN_DAYS = [
     "Lunedì", "Martedì", "Mercoledì",
     "Giovedì", "Venerdì", "Sabato", "Domenica"
@@ -81,7 +81,7 @@ def get_sport_emoji(team_name: str):
     ):
         return "🤽‍♂️"
 
-    return "⚽"  # default calcio
+    return "⚽"
 
 
 def send_telegram_message(text: str):
@@ -164,10 +164,20 @@ async def extract_matches(url: str):
 
             formatted_date, formatted_time = format_match_date(time_text)
 
+            # 🔗 Recupero link partita
+            link_el = await block.query_selector("a")
+            href = await link_el.get_attribute("href") if link_el else None
+
+            if href and href.startswith("/"):
+                match_url = "https://www.diretta.it" + href
+            else:
+                match_url = url
+
             match_str = (
                 f"📅 {formatted_date}\n"
                 f"🕒 {formatted_time}\n"
-                f"➡️ {home} vs {away}"
+                f"➡️ {home} vs {away}\n"
+                f"🔗 {match_url}"
             )
 
             matches.append(match_str)
@@ -187,7 +197,7 @@ async def main():
     stored = load_matches()
     updated = {}
 
-    total_new_matches = 0  # per il log finale
+    total_new_matches = 0
 
     for team_name, url in TEAMS.items():
         print("\n==============================")
@@ -207,8 +217,8 @@ async def main():
             clean_name = team_name.upper().strip()
 
             send_telegram_message(
-                f"⚠️ *NUOVA PARTITA TROVATA!*\n"
-                f"{emoji} Nuova partita trovate: *{clean_name}*\n"
+                f"⚠️ ! NUOVA PARTITA TROVATA ! ⚠️\n\n"
+                f"{emoji} Nuova partita trovate: {clean_name}\n"
                 f"{match}"
             )
 
