@@ -1,49 +1,38 @@
 import os
 import json
-import requests
-from bs4 import BeautifulSoup
-
-# ==========================
-#  CONFIGURAZIONE
-# ==========================
+import asyncio
+from playwright.async_api import async_playwright
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
-
-# Carica squadre dal secret TEAMS
 TEAMS = json.loads(os.getenv("TEAMS", "{}"))
 
 MATCHES_FILE = "matches.json"
 
 
 # ==========================
-#  FUNZIONI TELEGRAM
+# TELEGRAM
 # ==========================
 
 def send_telegram_message(text):
+    import requests
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     payload = {"chat_id": CHAT_ID, "text": text}
-    try:
-        r = requests.post(url, json=payload)
-        print(f"📨 Invio notifica: {text}")
-        print(f"➡️ Risposta Telegram: {r.text}")
-    except Exception as e:
-        print(f"❌ Errore Telegram: {e}")
+    r = requests.post(url, json=payload)
+    print(f"📨 Telegram: {r.text}")
 
 
 # ==========================
-#  CARICA / SALVA MATCHES
+# MATCHES STORAGE
 # ==========================
 
 def load_matches():
     if not os.path.exists(MATCHES_FILE):
-        print("⚠️ matches.json non trovato, creato nuovo file.")
         return {}
     try:
         with open(MATCHES_FILE, "r") as f:
             return json.load(f)
     except:
-        print("❌ Errore lettura matches.json, ricreo file.")
         return {}
 
 
@@ -54,79 +43,74 @@ def save_matches(data):
 
 
 # ==========================
-#  PARSER DIRETTA.IT (NUOVO)
+# PLAYWRIGHT SCRAPER
 # ==========================
 
-def extract_matches(url):
-    print(f"🔎 Controllo partite per URL: {url}")
+async def extract_matches(url):
+    print(f"🔎 Carico pagina: {url}")
 
-    try:
-        response = requests.get(url, timeout=10)
-    except Exception as e:
-        print(f"❌ Errore richiesta HTTP: {e}")
-        return []
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(headless=True)
+        page = await browser.new_page()
 
-    soup = BeautifulSoup(response.text, "html.parser")
+        await page.goto(url, timeout=60000)
 
-    # NUOVO SELETTORE 2026
-    match_blocks = soup.find_all("div", class_="event_match")
-    print(f"➡️ Trovati {len(match_blocks)} blocchi event_match")
+        # Aspetta che le partite vengano renderizzate
+        await page.wait_for_selector("div.event_match", timeout=15000)
 
-    matches = []
+        blocks = await page.query_selector_all("div.event_match")
+        print(f"➡️ Trovati {len(blocks)} blocchi event_match")
 
-    for block in match_blocks:
-        # Orario
-        time_el = block.find("div", class_="event_match--time")
-        time_text = time_el.get_text(strip=True) if time_el else "N/D"
+        matches = []
 
-        # Squadre
-        teams = block.find_all("div", class_="event_match--participant")
-        if len(teams) < 2:
-            continue
+        for block in blocks:
+            time_el = await block.query_selector("div.event_match--time")
+            teams_el = await block.query_selector_all("div.event_match--participant")
 
-        home = teams[0].get_text(strip=True)
-        away = teams[1].get_text(strip=True)
+            if not teams_el or len(teams_el) < 2:
+                continue
 
-        match_str = f"{time_text} - {home} vs {away}"
-        matches.append(match_str)
+            time_text = await time_el.inner_text() if time_el else "N/D"
+            home = await teams_el[0].inner_text()
+            away = await teams_el[1].inner_text()
 
-    print(f"✅ Partite estratte: {len(matches)}")
-    return matches
+            matches.append(f"{time_text} - {home} vs {away}")
+
+        await browser.close()
+        print(f"✅ Partite estratte: {len(matches)}")
+        return matches
 
 
 # ==========================
-#  MAIN BOT
+# MAIN
 # ==========================
 
-def main():
-    print("🚀 Avvio bot Diretta.it\n")
+async def main():
+    print("🚀 Avvio bot Diretta.it (Playwright)\n")
 
-    stored_matches = load_matches()
-    updated_matches = {}
+    stored = load_matches()
+    updated = {}
 
     for team_name, url in TEAMS.items():
         print("\n==============================")
         print(f"👀 Squadra: {team_name}")
 
-        new_list = extract_matches(url)
-        old_list = stored_matches.get(team_name, [])
+        new_list = await extract_matches(url)
+        old_list = stored.get(team_name, [])
 
         print(f"📊 Vecchie partite: {len(old_list)}")
 
-        # Trova partite nuove
         new_matches = [m for m in new_list if m not in old_list]
-
         print(f"📊 Nuove partite trovate: {len(new_matches)}")
 
-        # Invia notifiche
         for match in new_matches:
             send_telegram_message(f"📅 Nuova partita per {team_name}:\n{match}")
 
-        updated_matches[team_name] = new_list
+        updated[team_name] = new_list
 
-    save_matches(updated_matches)
+    save_matches(updated)
     print("✅ Fine esecuzione bot")
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
