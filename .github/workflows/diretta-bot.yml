@@ -1,51 +1,46 @@
-name: Diretta Bot (Playwright)
+name: Run Diretta Bot
 
 on:
   schedule:
-    - cron: "*/10 * * * *"
+    - cron: "0 5 * * *"      # 07:00 italiane (05:00 UTC)
+    - cron: "30 21 * * *"    # 23:30 italiane (21:30 UTC)
   workflow_dispatch:
-
-permissions:
-  contents: write   # <--- PERMETTE IL PUSH
 
 jobs:
   run-bot:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout repo
-      uses: actions/checkout@v4
-      with:
-        token: ${{ secrets.GITHUB_TOKEN }}   # <--- IMPORTANTE
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-    - name: Setup Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: "3.11"
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
 
-    - name: Install dependencies
-      run: |
-        pip install --upgrade pip
-        pip install playwright
-        pip install requests
-        pip install python-dotenv
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install playwright requests python-dotenv
+          playwright install chromium
 
-    - name: Install Playwright browsers
-      run: |
-        python -m playwright install --with-deps chromium
+      - name: Run bot
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          CHAT_ID: ${{ secrets.CHAT_ID }}
+          TEAMS: ${{ secrets.TEAMS }}
+        run: |
+          python bot.py
 
-    - name: Run bot
-      env:
-        TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
-        CHAT_ID: ${{ secrets.CHAT_ID }}
-        TEAMS: ${{ secrets.TEAMS }}
-      run: |
-        python bot.py
+      - name: Commit updated matches.json
+        run: |
+          git config --local user.email "github-actions@github.com"
+          git config --local user.name "GitHub Actions"
+          git add matches.json
+          git commit -m "Update matches.json" || echo "Nessuna modifica da commitare"
 
-    - name: Commit updated matches.json
-      run: |
-        git config --global user.name "github-actions"
-        git config --global user.email "actions@github.com"
-        git add matches.json
-        git commit -m "Update matches" || echo "No changes"
-        git push
+      - name: Push changes
+        uses: ad-m/github-push-action@v0.8.0
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
