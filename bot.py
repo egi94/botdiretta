@@ -28,21 +28,14 @@ ITALIAN_MONTHS = [
 
 
 def format_match_date(raw_time: str):
-    """
-    Converte '05.04. 13:00' → ('Sabato 5 Aprile 2026', '13:00')
-    Gestisce anche formati incompleti o anomali.
-    """
-
     raw = raw_time.strip()
 
-    # Se non contiene un punto, non è una data valida → ritorna grezzo
     if "." not in raw:
         return raw, ""
 
     parts = raw.split()
 
-    # --- PARTE DATA ---
-    date_part = parts[0].rstrip(".")  # rimuove eventuale punto finale
+    date_part = parts[0].rstrip(".")
     date_bits = date_part.split(".")
 
     if len(date_bits) < 2:
@@ -51,22 +44,18 @@ def format_match_date(raw_time: str):
     d = date_bits[0]
     m = date_bits[1]
 
-    # Se c'è l'anno lo prendiamo, altrimenti anno corrente
     if len(date_bits) >= 3:
         year = date_bits[2]
     else:
         year = str(datetime.now().year)
 
-    # --- PARTE ORARIO ---
     time_part = parts[1] if len(parts) > 1 else "00:00"
 
-    # Crea datetime in modo sicuro
     try:
         dt = datetime.strptime(f"{d}.{m}.{year} {time_part}", "%d.%m.%Y %H:%M")
     except:
         return raw, time_part
 
-    # Giorno e mese in italiano
     day_name = ITALIAN_DAYS[dt.weekday()]
     month_name = ITALIAN_MONTHS[dt.month - 1]
 
@@ -74,6 +63,25 @@ def format_match_date(raw_time: str):
     formatted_time = dt.strftime("%H:%M")
 
     return formatted_date, formatted_time
+
+
+def get_sport_emoji(team_name: str):
+    name = team_name.lower()
+
+    if "basket" in name:
+        return "🏀"
+
+    if (
+        "pallanuoto" in name or
+        "recco" in name or
+        "quinto" in name or
+        "bogliasco" in name or
+        "savona" in name or
+        "rapallo" in name
+    ):
+        return "🤽‍♂️"
+
+    return "⚽"  # default calcio
 
 
 def send_telegram_message(text: str):
@@ -188,9 +196,12 @@ async def main():
         print(f"🆕 Nuove partite trovate: {len(new_matches)}")
         for match in new_matches:
             print(f"📅 {match}")
+
+            emoji = get_sport_emoji(team_name)
+
             send_telegram_message(
                 f"⚠️ *NUOVA PARTITA TROVATA!*\n"
-                f"📣 Nuova partita trovate: *{team_name.upper()}*\n"
+                f"{emoji} Nuova partita trovate: *{team_name.upper()}*\n"
                 f"{match}"
             )
 
