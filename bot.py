@@ -90,7 +90,10 @@ def send_telegram_message(text: str):
         return
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     try:
-        r = requests.post(url, json={"chat_id": CHAT_ID, "text": text}, timeout=10)
+        r = requests.post(url, json={
+            "chat_id": CHAT_ID,
+            "text": text
+        }, timeout=10)
         if r.status_code != 200:
             print(f"⚠️ Errore Telegram: {r.status_code} - {r.text}")
     except Exception as e:
@@ -164,7 +167,7 @@ async def extract_matches(url: str):
             match_str = (
                 f"📅 {formatted_date}\n"
                 f"🕒 {formatted_time}\n"
-                f"⚽ {home} vs {away}"
+                f"➡️ {home} vs {away}"
             )
 
             matches.append(match_str)
@@ -198,10 +201,11 @@ async def main():
             print(f"📅 {match}")
 
             emoji = get_sport_emoji(team_name)
+            clean_name = team_name.upper().strip()
 
             send_telegram_message(
                 f"⚠️ *NUOVA PARTITA TROVATA!*\n"
-                f"{emoji} Nuova partita trovate: *{team_name.upper()}*\n"
+                f"{emoji} Nuova partita trovate: *{clean_name}*\n"
                 f"{match}"
             )
 
