@@ -5,6 +5,7 @@ from playwright.async_api import async_playwright
 import requests
 from dotenv import load_dotenv
 
+# Carica il file .env
 load_dotenv()
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
@@ -46,9 +47,15 @@ async def extract_matches(url: str):
     print(f"🔎 Carico pagina: {url}")
 
     async with async_playwright() as p:
+
+        # 🔥 VERSIONE COMPATIBILE CON GITHUB ACTIONS
         browser = await p.chromium.launch(
-            headless=False,
-            args=["--disable-blink-features=AutomationControlled"]
+            headless=True,
+            args=[
+                "--disable-blink-features=AutomationControlled",
+                "--no-sandbox",
+                "--disable-dev-shm-usage"
+            ]
         )
 
         context = await browser.new_context(
@@ -70,12 +77,15 @@ async def extract_matches(url: str):
         matches = []
 
         for block in blocks:
-            # Orario (div.event__time oppure niente)
+            # ORARIO (live o programmato)
             time_el = await block.query_selector("div.event__time, span.eventTime")
             time_text = (await time_el.inner_text()).strip() if time_el else "N/D"
 
-            # Tutti i nomi squadra nel blocco
-            team_els = await block.query_selector_all('span[data-testid="wcl-scores-simple-text-01"]')
+            # SQUADRE (primi due span con data-testid)
+            team_els = await block.query_selector_all(
+                'span[data-testid="wcl-scores-simple-text-01"]'
+            )
+
             if len(team_els) < 2:
                 continue
 
