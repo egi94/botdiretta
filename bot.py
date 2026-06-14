@@ -5,7 +5,6 @@ from playwright.async_api import async_playwright
 import requests
 from dotenv import load_dotenv
 from datetime import datetime
-import locale
 
 # Carica il file .env
 load_dotenv()
@@ -16,11 +15,16 @@ TEAMS = json.loads(os.getenv("TEAMS", "{}"))
 
 MATCHES_FILE = "matches.json"
 
-# Imposta locale italiano
-try:
-    locale.setlocale(locale.LC_TIME, "it_IT.UTF-8")
-except:
-    locale.setlocale(locale.LC_TIME, "it_IT")
+# Tabelle italiane (compatibili con GitHub Actions)
+ITALIAN_DAYS = [
+    "Lunedì", "Martedì", "Mercoledì",
+    "Giovedì", "Venerdì", "Sabato", "Domenica"
+]
+
+ITALIAN_MONTHS = [
+    "Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno",
+    "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre"
+]
 
 
 def format_match_date(raw_time: str):
@@ -29,29 +33,22 @@ def format_match_date(raw_time: str):
     """
     raw = raw_time.strip()
 
-    # Estrai data e ora
     parts = raw.split()
     date_part = parts[0]          # es: 05.04.
     time_part = parts[1] if len(parts) > 1 else "00:00"
 
-    # Estrai giorno e mese
-    d, m = date_part.replace(".", "").split()[:2] if " " in date_part else date_part.split(".")[:2]
-
-    # Anno: se non c'è, usa quello corrente
+    d, m = date_part.split(".")[:2]
     year = datetime.now().year
 
-    # Crea datetime
     dt = datetime.strptime(f"{d}.{m}.{year} {time_part}", "%d.%m.%Y %H:%M")
 
-    # Formattazione italiana
-    day_name = dt.strftime("%A").capitalize()
-    month_name = dt.strftime("%B").capitalize()
-    day_num = dt.day
-    year_num = dt.year
-    hour_min = dt.strftime("%H:%M")
+    day_name = ITALIAN_DAYS[dt.weekday()]
+    month_name = ITALIAN_MONTHS[dt.month - 1]
 
-    formatted_date = f"{day_name} {day_num} {month_name} {year_num}"
-    return formatted_date, hour_min
+    formatted_date = f"{day_name} {dt.day} {month_name} {dt.year}"
+    formatted_time = dt.strftime("%H:%M")
+
+    return formatted_date, formatted_time
 
 
 def send_telegram_message(text: str):
@@ -116,11 +113,9 @@ async def extract_matches(url: str):
         matches = []
 
         for block in blocks:
-            # ORARIO (live o programmato)
             time_el = await block.query_selector("div.event__time, span.eventTime")
             time_text = (await time_el.inner_text()).strip() if time_el else "N/D"
 
-            # SQUADRE
             team_els = await block.query_selector_all(
                 'span[data-testid="wcl-scores-simple-text-01"]'
             )
@@ -131,7 +126,6 @@ async def extract_matches(url: str):
             home = (await team_els[0].inner_text()).strip()
             away = (await team_els[1].inner_text()).strip()
 
-            # 🔥 Formattazione elegante della data
             formatted_date, formatted_time = format_match_date(time_text)
 
             match_str = (
