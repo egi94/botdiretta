@@ -1,103 +1,130 @@
+import os
+import json
 import requests
 from bs4 import BeautifulSoup
-import json
-import os
+
+# ==========================
+#  CONFIGURAZIONE
+# ==========================
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
-TEAMS = json.loads(os.getenv("TEAMS"))
+
+# Carica squadre dal secret TEAMS
+TEAMS = json.loads(os.getenv("TEAMS", "{}"))
 
 MATCHES_FILE = "matches.json"
 
 
-def load_matches():
-    if not os.path.exists(MATCHES_FILE):
-        return {}
-    with open(MATCHES_FILE, "r", encoding="utf-8") as f:
-        return json.load(f)
+# ==========================
+#  FUNZIONI TELEGRAM
+# ==========================
 
-
-def save_matches(data):
-    with open(MATCHES_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=4, ensure_ascii=False)
-
-
-def send_message(text):
-    if not TELEGRAM_TOKEN or not CHAT_ID:
-        print("❌ TELEGRAM_TOKEN o CHAT_ID mancanti")
-        return
-
+def send_telegram_message(text):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     payload = {"chat_id": CHAT_ID, "text": text}
     try:
-        r = requests.post(url, json=payload, timeout=10)
-        if r.status_code != 200:
-            print(f"❌ Errore Telegram: {r.status_code} - {r.text}")
-        else:
-            print("✅ Messaggio Telegram inviato")
+        r = requests.post(url, json=payload)
+        print(f"📨 Invio notifica: {text}")
+        print(f"➡️ Risposta Telegram: {r.text}")
     except Exception as e:
-        print(f"❌ Eccezione invio Telegram: {e}")
+        print(f"❌ Errore Telegram: {e}")
 
 
-def check_team(url):
+# ==========================
+#  CARICA / SALVA MATCHES
+# ==========================
+
+def load_matches():
+    if not os.path.exists(MATCHES_FILE):
+        print("⚠️ matches.json non trovato, creato nuovo file.")
+        return {}
+    try:
+        with open(MATCHES_FILE, "r") as f:
+            return json.load(f)
+    except:
+        print("❌ Errore lettura matches.json, ricreo file.")
+        return {}
+
+
+def save_matches(data):
+    with open(MATCHES_FILE, "w") as f:
+        json.dump(data, f, indent=4)
+    print("💾 matches.json aggiornato")
+
+
+# ==========================
+#  PARSER DIRETTA.IT (NUOVO)
+# ==========================
+
+def extract_matches(url):
     print(f"🔎 Controllo partite per URL: {url}")
-    headers = {"User-Agent": "Mozilla/5.0"}
-    response = requests.get(url, headers=headers, timeout=15)
+
+    try:
+        response = requests.get(url, timeout=10)
+    except Exception as e:
+        print(f"❌ Errore richiesta HTTP: {e}")
+        return []
 
     soup = BeautifulSoup(response.text, "html.parser")
 
-    # Ogni partita è un blocco .event__match
-    matches = soup.select("div.event__match")
-    results = []
+    # NUOVO SELETTORE 2026
+    match_blocks = soup.find_all("div", class_="event_match")
+    print(f"➡️ Trovati {len(match_blocks)} blocchi event_match")
 
-    print(f"➡️ Trovati {len(matches)} blocchi event__match")
+    matches = []
 
-    for m in matches:
-        time_el = m.select_one(".event__time")
-        home_el = m.select_one(".event__participant--home")
-        away_el = m.select_one(".event__participant--away")
+    for block in match_blocks:
+        # Orario
+        time_el = block.find("div", class_="event_match--time")
+        time_text = time_el.get_text(strip=True) if time_el else "N/D"
 
-        if not (time_el and home_el and away_el):
+        # Squadre
+        teams = block.find_all("div", class_="event_match--participant")
+        if len(teams) < 2:
             continue
 
-        time = time_el.text.strip()
-        home = home_el.text.strip()
-        away = away_el.text.strip()
+        home = teams[0].get_text(strip=True)
+        away = teams[1].get_text(strip=True)
 
-        text = f"{home} vs {away} - {time}"
-        results.append(text)
+        match_str = f"{time_text} - {home} vs {away}"
+        matches.append(match_str)
 
-    print(f"✅ Partite estratte: {len(results)}")
-    return results
+    print(f"✅ Partite estratte: {len(matches)}")
+    return matches
 
+
+# ==========================
+#  MAIN BOT
+# ==========================
 
 def main():
-    print("🚀 Avvio bot Diretta.it")
+    print("🚀 Avvio bot Diretta.it\n")
 
-    old_data = load_matches()
-    new_data = {}
+    stored_matches = load_matches()
+    updated_matches = {}
 
-    for team, url in TEAMS.items():
-        print(f"\n==============================")
-        print(f"👀 Squadra: {team}")
-        matches = check_team(url)
-        new_data[team] = matches
+    for team_name, url in TEAMS.items():
+        print("\n==============================")
+        print(f"👀 Squadra: {team_name}")
 
-        old_matches = old_data.get(team, [])
+        new_list = extract_matches(url)
+        old_list = stored_matches.get(team_name, [])
 
-        # Nuove partite rispetto all'ultima esecuzione
-        new_only = [m for m in matches if m not in old_matches]
+        print(f"📊 Vecchie partite: {len(old_list)}")
 
-        print(f"📊 Vecchie partite: {len(old_matches)}")
-        print(f"📊 Nuove partite trovate: {len(new_only)}")
+        # Trova partite nuove
+        new_matches = [m for m in new_list if m not in old_list]
 
-        for match in new_only:
-            msg = f"Nuova partita trovata per {team}:\n{match}"
-            print(f"📨 Invio notifica: {msg}")
-            send_message(msg)
+        print(f"📊 Nuove partite trovate: {len(new_matches)}")
 
-    save_matches(new_data)
-    print("\n💾 matches.json aggiornato")
+        # Invia notifiche
+        for match in new_matches:
+            send_telegram_message(f"📅 Nuova partita per {team_name}:\n{match}")
+
+        updated_matches[team_name] = new_list
+
+    save_matches(updated_matches)
     print("✅ Fine esecuzione bot")
 
 
