@@ -187,6 +187,8 @@ async def main():
     stored = load_matches()
     updated = {}
 
+    total_new_matches = 0  # per il log finale
+
     for team_name, url in TEAMS.items():
         print("\n==============================")
         print(f"👀 Squadra: {team_name}")
@@ -195,6 +197,7 @@ async def main():
         old_list = stored.get(team_name, [])
 
         new_matches = [m for m in new_list if m not in old_list]
+        total_new_matches += len(new_matches)
 
         print(f"🆕 Nuove partite trovate: {len(new_matches)}")
         for match in new_matches:
@@ -213,6 +216,22 @@ async def main():
 
     save_matches(updated)
     print("✅ Fine esecuzione bot")
+
+    # 🔄 LOG TELEGRAM FINALE
+    timestamp = datetime.now().strftime("%H:%M")
+
+    if total_new_matches == 0:
+        send_telegram_message(
+            f"🔄 Scansione completata\n"
+            f"Nessuna nuova partita trovata\n"
+            f"⏰ {timestamp}"
+        )
+    else:
+        send_telegram_message(
+            f"🔄 Scansione completata\n"
+            f"Nuove partite trovate: {total_new_matches}\n"
+            f"⏰ {timestamp}"
+        )
 
 
 if __name__ == "__main__":
