@@ -30,18 +30,43 @@ ITALIAN_MONTHS = [
 def format_match_date(raw_time: str):
     """
     Converte '05.04. 13:00' → ('Sabato 5 Aprile 2026', '13:00')
+    Gestisce anche formati incompleti o anomali.
     """
+
     raw = raw_time.strip()
 
+    # Se non contiene un punto, non è una data valida → ritorna grezzo
+    if "." not in raw:
+        return raw, ""
+
     parts = raw.split()
-    date_part = parts[0]          # es: 05.04.
+
+    # --- PARTE DATA ---
+    date_part = parts[0].rstrip(".")  # rimuove eventuale punto finale
+    date_bits = date_part.split(".")
+
+    if len(date_bits) < 2:
+        return raw, ""
+
+    d = date_bits[0]
+    m = date_bits[1]
+
+    # Se c'è l'anno lo prendiamo, altrimenti anno corrente
+    if len(date_bits) >= 3:
+        year = date_bits[2]
+    else:
+        year = str(datetime.now().year)
+
+    # --- PARTE ORARIO ---
     time_part = parts[1] if len(parts) > 1 else "00:00"
 
-    d, m = date_part.split(".")[:2]
-    year = datetime.now().year
+    # Crea datetime in modo sicuro
+    try:
+        dt = datetime.strptime(f"{d}.{m}.{year} {time_part}", "%d.%m.%Y %H:%M")
+    except:
+        return raw, time_part
 
-    dt = datetime.strptime(f"{d}.{m}.{year} {time_part}", "%d.%m.%Y %H:%M")
-
+    # Giorno e mese in italiano
     day_name = ITALIAN_DAYS[dt.weekday()]
     month_name = ITALIAN_MONTHS[dt.month - 1]
 
@@ -163,7 +188,11 @@ async def main():
         print(f"🆕 Nuove partite trovate: {len(new_matches)}")
         for match in new_matches:
             print(f"📅 {match}")
-            send_telegram_message(f"📅 Nuova partita per {team_name}:\n{match}")
+            send_telegram_message(
+                f"⚠️ Nuova Partita TROVATA!\n"
+                f"📣 Nuova partita trovata per {team_name}\n"
+                f"{match}"
+            )
 
         updated[team_name] = new_list
 
