@@ -65,7 +65,8 @@ async def extract_matches(url: str):
                 "Chrome/124.0.0.0 Safari/537.36"
             ),
             viewport={"width": 1366, "height": 768},
-            locale="it-IT"
+            locale="it-IT",
+            timezone_id="Europe/Rome"   # ⭐ FUSO ORARIO ITALIANO
         )
 
         page = await context.new_page()
