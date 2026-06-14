@@ -45,7 +45,7 @@ def save_matches(data):
 
 
 # ==========================
-# PLAYWRIGHT SCRAPER ANTI‑BOT
+# PLAYWRIGHT SCRAPER + PROXY
 # ==========================
 
 async def extract_matches(url):
@@ -57,15 +57,15 @@ async def extract_matches(url):
             args=[
                 "--disable-blink-features=AutomationControlled",
                 "--no-sandbox",
-                "--disable-dev-shm-usage",
-                "--disable-gpu",
-                "--disable-infobars",
-                "--disable-web-security",
-                "--disable-features=IsolateOrigins,site-per-process"
+                "--disable-dev-shm-usage"
             ]
         )
 
+        # PROXY ITALIANO (Telecom Italia – Pescara)
         context = await browser.new_context(
+            proxy={
+                "server": "http://188.11.179.26:8443"
+            },
             user_agent=(
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                 "AppleWebKit/537.36 (KHTML, like Gecko) "
@@ -77,13 +77,18 @@ async def extract_matches(url):
 
         page = await context.new_page()
 
-        await page.goto(url, timeout=60000, wait_until="networkidle")
+        try:
+            await page.goto(url, timeout=60000, wait_until="networkidle")
+        except Exception as e:
+            print(f"❌ Errore durante il caricamento pagina: {e}")
+            await browser.close()
+            return []
 
         # Aspetta che Diretta.it renderizzi le partite
         try:
             await page.wait_for_selector("div.event_match", timeout=30000)
         except:
-            print("⚠️ Nessun event_match trovato (possibile blocco anti‑bot)")
+            print("⚠️ Nessun event_match trovato (proxy forse bloccato)")
             await browser.close()
             return []
 
@@ -115,7 +120,7 @@ async def extract_matches(url):
 # ==========================
 
 async def main():
-    print("🚀 Avvio bot Diretta.it (Playwright Anti‑Bot)\n")
+    print("🚀 Avvio bot Diretta.it (Playwright + Proxy IT)\n")
 
     stored = load_matches()
     updated = {}
