@@ -189,8 +189,8 @@ async def main():
         for match in new_matches:
             print(f"📅 {match}")
             send_telegram_message(
-                f"⚠️ Nuova Partita TROVATA!\n"
-                f"📣 Nuova partita trovata per {team_name}\n"
+                f"⚠️ *NUOVA PARTITA TROVATA!*\n"
+                f"📣 Nuova partita trovate: *{team_name.upper()}*\n"
                 f"{match}"
             )
 
