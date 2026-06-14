@@ -28,11 +28,13 @@ def send_telegram_message(text):
 
 def load_matches():
     if not os.path.exists(MATCHES_FILE):
+        print("⚠️ matches.json non trovato, creato nuovo file.")
         return {}
     try:
         with open(MATCHES_FILE, "r") as f:
             return json.load(f)
     except:
+        print("❌ Errore lettura matches.json, ricreo file.")
         return {}
 
 
@@ -43,20 +45,47 @@ def save_matches(data):
 
 
 # ==========================
-# PLAYWRIGHT SCRAPER
+# PLAYWRIGHT SCRAPER ANTI‑BOT
 # ==========================
 
 async def extract_matches(url):
     print(f"🔎 Carico pagina: {url}")
 
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True)
-        page = await browser.new_page()
+        browser = await p.chromium.launch(
+            headless=True,
+            args=[
+                "--disable-blink-features=AutomationControlled",
+                "--no-sandbox",
+                "--disable-dev-shm-usage",
+                "--disable-gpu",
+                "--disable-infobars",
+                "--disable-web-security",
+                "--disable-features=IsolateOrigins,site-per-process"
+            ]
+        )
 
-        await page.goto(url, timeout=60000)
+        context = await browser.new_context(
+            user_agent=(
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/124.0.0.0 Safari/537.36"
+            ),
+            viewport={"width": 1366, "height": 768},
+            locale="it-IT"
+        )
 
-        # Aspetta che le partite vengano renderizzate
-        await page.wait_for_selector("div.event_match", timeout=15000)
+        page = await context.new_page()
+
+        await page.goto(url, timeout=60000, wait_until="networkidle")
+
+        # Aspetta che Diretta.it renderizzi le partite
+        try:
+            await page.wait_for_selector("div.event_match", timeout=30000)
+        except:
+            print("⚠️ Nessun event_match trovato (possibile blocco anti‑bot)")
+            await browser.close()
+            return []
 
         blocks = await page.query_selector_all("div.event_match")
         print(f"➡️ Trovati {len(blocks)} blocchi event_match")
@@ -86,7 +115,7 @@ async def extract_matches(url):
 # ==========================
 
 async def main():
-    print("🚀 Avvio bot Diretta.it (Playwright)\n")
+    print("🚀 Avvio bot Diretta.it (Playwright Anti‑Bot)\n")
 
     stored = load_matches()
     updated = {}
