@@ -4,6 +4,8 @@ import asyncio
 from playwright.async_api import async_playwright
 import requests
 from dotenv import load_dotenv
+from datetime import datetime
+import locale
 
 # Carica il file .env
 load_dotenv()
@@ -13,6 +15,43 @@ CHAT_ID = os.getenv("CHAT_ID")
 TEAMS = json.loads(os.getenv("TEAMS", "{}"))
 
 MATCHES_FILE = "matches.json"
+
+# Imposta locale italiano
+try:
+    locale.setlocale(locale.LC_TIME, "it_IT.UTF-8")
+except:
+    locale.setlocale(locale.LC_TIME, "it_IT")
+
+
+def format_match_date(raw_time: str):
+    """
+    Converte '05.04. 13:00' → ('Sabato 5 Aprile 2026', '13:00')
+    """
+    raw = raw_time.strip()
+
+    # Estrai data e ora
+    parts = raw.split()
+    date_part = parts[0]          # es: 05.04.
+    time_part = parts[1] if len(parts) > 1 else "00:00"
+
+    # Estrai giorno e mese
+    d, m = date_part.replace(".", "").split()[:2] if " " in date_part else date_part.split(".")[:2]
+
+    # Anno: se non c'è, usa quello corrente
+    year = datetime.now().year
+
+    # Crea datetime
+    dt = datetime.strptime(f"{d}.{m}.{year} {time_part}", "%d.%m.%Y %H:%M")
+
+    # Formattazione italiana
+    day_name = dt.strftime("%A").capitalize()
+    month_name = dt.strftime("%B").capitalize()
+    day_num = dt.day
+    year_num = dt.year
+    hour_min = dt.strftime("%H:%M")
+
+    formatted_date = f"{day_name} {day_num} {month_name} {year_num}"
+    return formatted_date, hour_min
 
 
 def send_telegram_message(text: str):
@@ -48,7 +87,6 @@ async def extract_matches(url: str):
 
     async with async_playwright() as p:
 
-        # 🔥 VERSIONE COMPATIBILE CON GITHUB ACTIONS
         browser = await p.chromium.launch(
             headless=True,
             args=[
@@ -66,7 +104,7 @@ async def extract_matches(url: str):
             ),
             viewport={"width": 1366, "height": 768},
             locale="it-IT",
-            timezone_id="Europe/Rome"   # ⭐ FUSO ORARIO ITALIANO
+            timezone_id="Europe/Rome"
         )
 
         page = await context.new_page()
@@ -82,7 +120,7 @@ async def extract_matches(url: str):
             time_el = await block.query_selector("div.event__time, span.eventTime")
             time_text = (await time_el.inner_text()).strip() if time_el else "N/D"
 
-            # SQUADRE (primi due span con data-testid)
+            # SQUADRE
             team_els = await block.query_selector_all(
                 'span[data-testid="wcl-scores-simple-text-01"]'
             )
@@ -93,7 +131,15 @@ async def extract_matches(url: str):
             home = (await team_els[0].inner_text()).strip()
             away = (await team_els[1].inner_text()).strip()
 
-            match_str = f"{time_text} - {home} vs {away}"
+            # 🔥 Formattazione elegante della data
+            formatted_date, formatted_time = format_match_date(time_text)
+
+            match_str = (
+                f"📅 {formatted_date}\n"
+                f"🕒 {formatted_time}\n"
+                f"⚽ {home} vs {away}"
+            )
+
             matches.append(match_str)
 
         await browser.close()
