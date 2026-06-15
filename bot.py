@@ -265,7 +265,9 @@ async def extract_matches(url: str):
                 detail_page = await context.new_page()
                 await detail_page.goto(match_url, timeout=60000, wait_until="networkidle")
 
-                league_el = await detail_page.query_selector('span[data-testid="wcl-scores-overline-03"]')
+                league_el = await detail_page.query_selector(
+                    'span[data-testid="wcl-scores-overline-03"][itemprop="name"], span.headerLeague__title-text'
+                )
                 league_name = (await league_el.inner_text()).strip() if league_el else "N/D"
 
                 await detail_page.close()
