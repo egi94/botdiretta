@@ -98,7 +98,8 @@ def send_telegram_message(text: str):
             json={
                 "chat_id": CHAT_ID,
                 "text": text,
-                "disable_web_page_preview": True
+                "disable_web_page_preview": True,
+                "parse_mode": "Markdown"
             },
             timeout=10
         )
@@ -121,6 +122,71 @@ def load_matches():
 def save_matches(data):
     with open(MATCHES_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=4, ensure_ascii=False)
+
+
+def parse_stored_match(match_str):
+    lines = match_str.split("\n")
+    if len(lines) < 4:
+        return None
+
+    date_line = lines[0].replace("📅", "").strip()
+    time_line = lines[1].replace("🕒", "").strip()
+    teams_line = lines[2].replace("➡️", "").strip()
+    url_line = lines[3].replace("🔗", "").strip()
+
+    try:
+        parts = date_line.split()
+        day = int(parts[1])
+        month_name = parts[2]
+        year = int(parts[3])
+
+        month = ITALIAN_MONTHS.index(month_name) + 1
+        hour, minute = map(int, time_line.split(":"))
+
+        dt = datetime(year, month, day, hour, minute)
+
+        return dt, date_line, time_line, teams_line, url_line
+    except:
+        return None
+
+
+async def list_next_matches():
+    stored = load_matches()
+    now = datetime.now()
+    limit = now + timedelta(days=7)
+
+    upcoming = []
+
+    for team, matches in stored.items():
+        for m in matches:
+            parsed = parse_stored_match(m)
+            if not parsed:
+                continue
+
+            dt, date_line, time_line, teams_line, url_line = parsed
+
+            if now <= dt <= limit:
+                emoji = get_sport_emoji(team)
+                upcoming.append((dt, team, emoji, date_line, time_line, teams_line, url_line))
+
+    if not upcoming:
+        send_telegram_message("Nessuna partita nei prossimi 7 giorni.")
+        return
+
+    upcoming.sort(key=lambda x: x[0])
+
+    msg = "📅 *Ecco le partite dei prossimi 7 giorni:*\n\n"
+
+    for dt, team, emoji, date_line, time_line, teams_line, url_line in upcoming:
+        msg += (
+            f"{emoji} {team.upper()}\n"
+            f"📅 {date_line}\n"
+            f"🕒 {time_line}\n"
+            f"➡️ {teams_line}\n"
+            f"🔗 {url_line}\n\n"
+        )
+
+    send_telegram_message(msg)
 
 
 async def extract_matches(url: str):
@@ -168,7 +234,6 @@ async def extract_matches(url: str):
             home = (await team_els[0].inner_text()).strip()
             away = (await team_els[1].inner_text()).strip()
 
-            # 🔗 LINK PARTITA — SOLO link con /partita/
             link_el = await block.query_selector('a[href*="/partita/"]')
             if not link_el:
                 print("⚠️ Nessun link partita trovato, salto blocco")
@@ -177,7 +242,6 @@ async def extract_matches(url: str):
             href = await link_el.get_attribute("href")
             match_url = "https://www.diretta.it" + href if href.startswith("/") else href
 
-            # 🔧 FIX SRF
             if "SRF" in time_text:
                 try:
                     detail_page = await context.new_page()
@@ -188,13 +252,11 @@ async def extract_matches(url: str):
                         full_date = (await date_el.inner_text()).strip()
 
                         if "," in full_date:
-                            # Formato: "Giovedì 2 Aprile 2026, 19:30"
                             date_part, time_part = full_date.split(",", 1)
                             formatted_date = date_part.strip()
                             formatted_time = time_part.strip()
 
                         elif " " in full_date and "." in full_date:
-                            # Formato: "15.06.2026 19:30"
                             date_part, time_part = full_date.split(" ", 1)
                             try:
                                 dt = datetime.strptime(date_part, "%d.%m.%Y")
@@ -276,14 +338,11 @@ async def main():
     save_matches(updated)
     print("✅ Fine esecuzione bot")
 
-    # Calcolo partite già scansionate
     total_scanned = sum(len(v) for v in stored.values())
 
-    # Orario italiano
     timestamp_ita = datetime.now() + timedelta(hours=2)
     ita_str = timestamp_ita.strftime("%H:%M")
 
-    # Messaggio finale
     send_telegram_message(
         f"🔄 Scansione completata\n"
         f"Partite già scansionate: {total_scanned}\n"
@@ -293,4 +352,9 @@ async def main():
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    import sys
+
+    if len(sys.argv) > 1 and sys.argv[1] == "next":
+        asyncio.run(list_next_matches())
+    else:
+        asyncio.run(main())
