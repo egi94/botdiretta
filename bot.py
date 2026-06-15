@@ -35,7 +35,7 @@ def format_match_date(raw_time: str):
     raw = raw_time.strip()
 
     if "." not in raw:
-        return None, None
+        return None, None, None
 
     parts = raw.split()
 
@@ -43,7 +43,7 @@ def format_match_date(raw_time: str):
     date_bits = date_part.split(".")
 
     if len(date_bits) < 2:
-        return None, None
+        return None, None, None
 
     d = date_bits[0]
     m = date_bits[1]
@@ -58,11 +58,10 @@ def format_match_date(raw_time: str):
     try:
         dt = datetime.strptime(f"{d}.{m}.{year} {time_part}", "%d.%m.%Y %H:%M")
     except:
-        return None, None
+        return None, None, None
 
     formatted_date = f"{ITALIAN_DAYS[dt.weekday()]} {dt.day} {ITALIAN_MONTHS[dt.month - 1]} {dt.year}"
     formatted_time = dt.strftime("%H:%M")
-
     iso_date = dt.strftime("%Y-%m-%d")
 
     return iso_date, formatted_time, formatted_date
@@ -213,7 +212,7 @@ async def main():
                 # NUOVA PARTITA
                 send_telegram_message(
                     f"⚠️ ! NUOVA PARTITA TROVATA ! ⚠️\n\n"
-                    f"⚽ Nuova partita trovata: {team_name.upper()}\n"
+                    f"⚽ Nuova partita trovate: {team_name.upper()}\n"
                     f"📅 {new['formatted_date']}\n"
                     f"🕒 {new['time']}\n"
                     f"➡️ {new['home']} vs {new['away']}\n"
@@ -224,10 +223,9 @@ async def main():
 
             # PARTITA ESISTENTE → controlla variazioni
             if old["time"] != new["time"]:
-                # VARIAZIONE ORARIO
                 send_telegram_message(
                     f"⏰ ! VARIAZIONE ORARIO TROVATA ! ⏰\n\n"
-                    f"⚽ Nuova partita trovata: {team_name.upper()}\n"
+                    f"⚽ Nuova partita trovate: {team_name.upper()}\n"
                     f"📅 {new['formatted_date']}\n"
                     f"🕒 {new['time']}\n"
                     f"➡️ {new['home']} vs {new['away']}\n"
@@ -235,10 +233,9 @@ async def main():
                 )
 
             if old["date"] != new["date"]:
-                # VARIAZIONE DATA
                 send_telegram_message(
                     f"📅 ! VARIAZIONE DATA TROVATA ! 📅\n\n"
-                    f"⚽ Nuova partita trovata: {team_name.upper()}\n"
+                    f"⚽ Nuova partita trovate: {team_name.upper()}\n"
                     f"📅 {new['formatted_date']}\n"
                     f"🕒 {new['time']}\n"
                     f"➡️ {new['home']} vs {new['away']}\n"
