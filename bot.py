@@ -167,7 +167,7 @@ async def extract_matches(url: str):
             home = (await team_els[0].inner_text()).strip()
             away = (await team_els[1].inner_text()).strip()
 
-            # Link partita
+            # LINK PARTITA (VERSIONE STABILE)
             link_el = await block.query_selector("div.eventRowLink a")
             if link_el:
                 href = await link_el.get_attribute("href")
@@ -193,7 +193,7 @@ async def extract_matches(url: str):
 # -------------------------------
 
 async def main():
-    print("🚀 Avvio bot Diretta.it (logica avanzata)")
+    print("🚀 Avvio bot Diretta.it (versione stabile + fix testo)")
 
     stored = load_matches()
     updated = {}
