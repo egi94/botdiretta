@@ -4,7 +4,7 @@ import asyncio
 from playwright.async_api import async_playwright
 import requests
 from dotenv import load_dotenv
-from datetime import datetime
+from datetime import datetime, timedelta
 
 # Carica il file .env
 load_dotenv()
@@ -68,9 +68,11 @@ def format_match_date(raw_time: str):
 def get_sport_emoji(team_name: str):
     name = team_name.lower()
 
+    # Basket
     if "basket" in name:
         return "🏀"
 
+    # Pallanuoto
     if (
         "pallanuoto" in name or
         "recco" in name or
@@ -81,6 +83,11 @@ def get_sport_emoji(team_name: str):
     ):
         return "🤽‍♂️"
 
+    # Futsal
+    if "futsal" in name:
+        return "🥅"
+
+    # Default: Calcio
     return "⚽"
 
 
@@ -169,7 +176,7 @@ async def extract_matches(url: str):
 
             formatted_date, formatted_time = format_match_date(time_text)
 
-            # 🔗 LINK PARTITA SPECIFICA: div.eventRowLink a
+            # 🔗 LINK PARTITA SPECIFICA
             link_el = await block.query_selector("div.eventRowLink a")
 
             if link_el:
@@ -179,7 +186,6 @@ async def extract_matches(url: str):
                 else:
                     match_url = href or url
             else:
-                # Fallback: link squadra o URL pagina
                 fallback_link = await block.query_selector("a")
                 href = await fallback_link.get_attribute("href") if fallback_link else None
                 if href and href.startswith("/"):
@@ -241,19 +247,27 @@ async def main():
     save_matches(updated)
     print("✅ Fine esecuzione bot")
 
-    timestamp = datetime.now().strftime("%H:%M")
+    # ORARI
+    timestamp_server = datetime.now()
+    timestamp_ita = timestamp_server + timedelta(hours=2)
 
+    server_str = timestamp_server.strftime("%H:%M")
+    ita_str = timestamp_ita.strftime("%H:%M")
+
+    # MESSAGGIO FINALE
     if total_new_matches == 0:
         send_telegram_message(
             f"🔄 Scansione completata\n"
             f"Nessuna nuova partita trovata\n"
-            f"⏰ {timestamp}"
+            f"⏰ {server_str} - ORARIO SERVER\n"
+            f"⏰ {ita_str} - ORARIO ITALIANO"
         )
     else:
         send_telegram_message(
             f"🔄 Scansione completata\n"
             f"Nuove partite trovate: {total_new_matches}\n"
-            f"⏰ {timestamp}"
+            f"⏰ {server_str} - ORARIO SERVER\n"
+            f"⏰ {ita_str} - ORARIO ITALIANO"
         )
 
 
