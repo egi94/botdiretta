@@ -6,7 +6,7 @@ import requests
 from dotenv import load_dotenv
 from datetime import datetime
 
-# Carica .env
+# Carica il file .env
 load_dotenv()
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
@@ -15,11 +15,7 @@ TEAMS = json.loads(os.getenv("TEAMS", "{}"))
 
 MATCHES_FILE = "matches.json"
 
-
-# -------------------------------
-#  FORMATTATORE DATA / ORA
-# -------------------------------
-
+# Tabelle italiane
 ITALIAN_DAYS = [
     "Lunedì", "Martedì", "Mercoledì",
     "Giovedì", "Venerdì", "Sabato", "Domenica"
@@ -31,14 +27,11 @@ ITALIAN_MONTHS = [
 ]
 
 
-def format_match_date(raw_time):
-    if not raw_time:
-        return None, None, None
-
+def format_match_date(raw_time: str):
     raw = raw_time.strip()
 
     if "." not in raw:
-        return None, None, None
+        return raw, ""
 
     parts = raw.split()
 
@@ -46,7 +39,7 @@ def format_match_date(raw_time):
     date_bits = date_part.split(".")
 
     if len(date_bits) < 2:
-        return None, None, None
+        return raw, ""
 
     d = date_bits[0]
     m = date_bits[1]
@@ -61,26 +54,41 @@ def format_match_date(raw_time):
     try:
         dt = datetime.strptime(f"{d}.{m}.{year} {time_part}", "%d.%m.%Y %H:%M")
     except:
-        return None, None, None
+        return raw, time_part
 
-    formatted_date = f"{ITALIAN_DAYS[dt.weekday()]} {dt.day} {ITALIAN_MONTHS[dt.month - 1]} {dt.year}"
+    day_name = ITALIAN_DAYS[dt.weekday()]
+    month_name = ITALIAN_MONTHS[dt.month - 1]
+
+    formatted_date = f"{day_name} {dt.day} {month_name} {dt.year}"
     formatted_time = dt.strftime("%H:%M")
-    iso_date = dt.strftime("%Y-%m-%d")
 
-    return iso_date, formatted_time, formatted_date
+    return formatted_date, formatted_time
 
 
-# -------------------------------
-#  TELEGRAM
-# -------------------------------
+def get_sport_emoji(team_name: str):
+    name = team_name.lower()
+
+    if "basket" in name:
+        return "🏀"
+
+    if (
+        "pallanuoto" in name or
+        "recco" in name or
+        "quinto" in name or
+        "bogliasco" in name or
+        "savona" in name or
+        "rapallo" in name
+    ):
+        return "🤽‍♂️"
+
+    return "⚽"
+
 
 def send_telegram_message(text: str):
     if not TELEGRAM_TOKEN or not CHAT_ID:
-        print("⚠️ TOKEN o CHAT_ID mancanti")
+        print("⚠️ TELEGRAM_TOKEN o CHAT_ID mancanti, salto Telegram")
         return
-
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-
     try:
         r = requests.post(
             url,
@@ -93,14 +101,9 @@ def send_telegram_message(text: str):
         )
         if r.status_code != 200:
             print(f"⚠️ Errore Telegram: {r.status_code} - {r.text}")
-
     except Exception as e:
         print(f"⚠️ Eccezione Telegram: {e}")
 
-
-# -------------------------------
-#  STORAGE
-# -------------------------------
 
 def load_matches():
     if not os.path.exists(MATCHES_FILE):
@@ -108,7 +111,7 @@ def load_matches():
     try:
         with open(MATCHES_FILE, "r", encoding="utf-8") as f:
             return json.load(f)
-    except:
+    except Exception:
         return {}
 
 
@@ -117,17 +120,17 @@ def save_matches(data):
         json.dump(data, f, indent=4, ensure_ascii=False)
 
 
-# -------------------------------
-#  SCRAPING
-# -------------------------------
-
 async def extract_matches(url: str):
     print(f"🔎 Carico pagina: {url}")
 
     async with async_playwright() as p:
         browser = await p.chromium.launch(
             headless=True,
-            args=["--no-sandbox", "--disable-dev-shm-usage"]
+            args=[
+                "--disable-blink-features=AutomationControlled",
+                "--no-sandbox",
+                "--disable-dev-shm-usage"
+            ]
         )
 
         context = await browser.new_context(
@@ -136,6 +139,7 @@ async def extract_matches(url: str):
                 "AppleWebKit/537.36 (KHTML, like Gecko) "
                 "Chrome/124.0.0.0 Safari/537.36"
             ),
+            viewport={"width": 1366, "height": 768},
             locale="it-IT",
             timezone_id="Europe/Rome"
         )
@@ -144,113 +148,113 @@ async def extract_matches(url: str):
         await page.goto(url, timeout=60000, wait_until="networkidle")
 
         blocks = await page.query_selector_all("div.event__match")
+        print(f"➡️ Trovati {len(blocks)} blocchi partita (event__match)")
 
         matches = []
 
         for block in blocks:
             # Tempo
             time_el = await block.query_selector("div.event__time, span.eventTime")
-            time_text = (await time_el.inner_text()).strip() if time_el else None
+            time_text = (await time_el.inner_text()).strip() if time_el else "N/D"
 
-            iso_date, match_time, formatted_date = format_match_date(time_text)
-
-            if not iso_date:
-                continue
-
-            # Squadre
             team_els = await block.query_selector_all(
                 'span[data-testid="wcl-scores-simple-text-01"]'
             )
+
             if len(team_els) < 2:
                 continue
 
             home = (await team_els[0].inner_text()).strip()
             away = (await team_els[1].inner_text()).strip()
 
-            # LINK PARTITA (VERSIONE STABILE)
+            formatted_date, formatted_time = format_match_date(time_text)
+
+            # 🔗 LINK PARTITA SPECIFICA: div.eventRowLink a
             link_el = await block.query_selector("div.eventRowLink a")
+
             if link_el:
                 href = await link_el.get_attribute("href")
-                match_url = "https://www.diretta.it" + href if href.startswith("/") else href
+                if href and href.startswith("/"):
+                    match_url = "https://www.diretta.it" + href
+                else:
+                    match_url = href or url
             else:
-                match_url = url
+                # Fallback: link squadra o URL pagina
+                fallback_link = await block.query_selector("a")
+                href = await fallback_link.get_attribute("href") if fallback_link else None
+                if href and href.startswith("/"):
+                    match_url = "https://www.diretta.it" + href
+                else:
+                    match_url = href or url
 
-            matches.append({
-                "home": home,
-                "away": away,
-                "date": iso_date,
-                "time": match_time,
-                "formatted_date": formatted_date,
-                "url": match_url
-            })
+            match_str = (
+                f"📅 {formatted_date}\n"
+                f"🕒 {formatted_time}\n"
+                f"➡️ {home} vs {away}\n"
+                f"🔗 {match_url}"
+            )
+
+            matches.append(match_str)
 
         await browser.close()
+
+        print(f"🧾 Partite estratte: {len(matches)}")
+        for m in matches:
+            print("   •", m)
+
         return matches
 
 
-# -------------------------------
-#  MAIN LOGIC
-# -------------------------------
-
 async def main():
-    print("🚀 Avvio bot Diretta.it (versione stabile + fix testo)")
+    print("🚀 Avvio bot Diretta.it (Locale)")
 
     stored = load_matches()
     updated = {}
 
+    total_new_matches = 0
+
     for team_name, url in TEAMS.items():
-        print(f"\n==============================")
+        print("\n==============================")
         print(f"👀 Squadra: {team_name}")
 
-        new_matches = await extract_matches(url)
-        old_matches = stored.get(team_name, [])
+        new_list = await extract_matches(url)
+        old_list = stored.get(team_name, [])
 
-        updated_matches = []
+        new_matches = [m for m in new_list if m not in old_list]
+        total_new_matches += len(new_matches)
 
-        for new in new_matches:
-            # Cerca se la partita esiste già
-            old = next((m for m in old_matches if m["url"] == new["url"]), None)
+        print(f"🆕 Nuove partite trovate: {len(new_matches)}")
+        for match in new_matches:
+            print(f"📅 {match}")
 
-            if not old:
-                # NUOVA PARTITA
-                send_telegram_message(
-                    f"⚠️ ! NUOVA PARTITA TROVATA ! ⚠️\n\n"
-                    f"⚽ Nuova partita: {team_name.upper()}\n"
-                    f"📅 {new['formatted_date']}\n"
-                    f"🕒 {new['time']}\n"
-                    f"➡️ {new['home']} vs {new['away']}\n"
-                    f"🔗 {new['url']}"
-                )
-                updated_matches.append(new)
-                continue
+            emoji = get_sport_emoji(team_name)
+            clean_name = team_name.upper().strip()
 
-            # PARTITA ESISTENTE → controlla variazioni
-            if old["time"] != new["time"]:
-                send_telegram_message(
-                    f"⏰ ! VARIAZIONE ORARIO TROVATA ! ⏰\n\n"
-                    f"⚽ Nuova partita: {team_name.upper()}\n"
-                    f"📅 {new['formatted_date']}\n"
-                    f"🕒 {new['time']}\n"
-                    f"➡️ {new['home']} vs {new['away']}\n"
-                    f"🔗 {new['url']}"
-                )
+            send_telegram_message(
+                f"⚠️ ! NUOVA PARTITA TROVATA ! ⚠️\n\n"
+                f"{emoji} Nuova partita: {clean_name}\n"
+                f"{match}"
+            )
 
-            if old["date"] != new["date"]:
-                send_telegram_message(
-                    f"📅 ! VARIAZIONE DATA TROVATA ! 📅\n\n"
-                    f"⚽ Nuova partita: {team_name.upper()}\n"
-                    f"📅 {new['formatted_date']}\n"
-                    f"🕒 {new['time']}\n"
-                    f"➡️ {new['home']} vs {new['away']}\n"
-                    f"🔗 {new['url']}"
-                )
-
-            updated_matches.append(new)
-
-        updated[team_name] = updated_matches
+        updated[team_name] = new_list
 
     save_matches(updated)
     print("✅ Fine esecuzione bot")
+
+    timestamp = datetime.now().strftime("%H:%M")
+
+    if total_new_matches == 0:
+        send_telegram_message(
+            f"🔄 Scansione completata\n"
+            f"Nessuna nuova partita trovata\n"
+            f"⏰ {timestamp}"
+        )
+    else:
+        send_telegram_message(
+            f"🔄 Scansione completata\n"
+            f"Nuove partite trovate: {total_new_matches}\n"
+            f"⏰ {timestamp}"
+        )
 
 
 if __name__ == "__main__":
