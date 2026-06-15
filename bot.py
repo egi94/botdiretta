@@ -90,11 +90,15 @@ def send_telegram_message(text: str):
         return
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     try:
-        r = requests.post(url, json={
-            "chat_id": CHAT_ID,
-            "text": text,
-            "disable_web_page_preview": True
-        }, timeout=10)
+        r = requests.post(
+            url,
+            json={
+                "chat_id": CHAT_ID,
+                "text": text,
+                "disable_web_page_preview": True
+            },
+            timeout=10
+        )
         if r.status_code != 200:
             print(f"⚠️ Errore Telegram: {r.status_code} - {r.text}")
     except Exception as e:
@@ -120,7 +124,6 @@ async def extract_matches(url: str):
     print(f"🔎 Carico pagina: {url}")
 
     async with async_playwright() as p:
-
         browser = await p.chromium.launch(
             headless=True,
             args=[
@@ -150,6 +153,7 @@ async def extract_matches(url: str):
         matches = []
 
         for block in blocks:
+            # Ora il tempo spesso è in un elemento diverso, ma manteniamo la logica attuale
             time_el = await block.query_selector("div.event__time, span.eventTime")
             time_text = (await time_el.inner_text()).strip() if time_el else "N/D"
 
@@ -165,13 +169,23 @@ async def extract_matches(url: str):
 
             formatted_date, formatted_time = format_match_date(time_text)
 
-            link_el = await block.query_selector("a")
-            href = await link_el.get_attribute("href") if link_el else None
+            # 🔗 LINK PARTITA SPECIFICA: div.eventRowLink a
+            link_el = await block.query_selector("div.eventRowLink a")
 
-            if href and href.startswith("/"):
-                match_url = "https://www.diretta.it" + href
+            if link_el:
+                href = await link_el.get_attribute("href")
+                if href and href.startswith("/"):
+                    match_url = "https://www.diretta.it" + href
+                else:
+                    match_url = href or url
             else:
-                match_url = url
+                # Fallback: link squadra o URL pagina
+                fallback_link = await block.query_selector("a")
+                href = await fallback_link.get_attribute("href") if fallback_link else None
+                if href and href.startswith("/"):
+                    match_url = "https://www.diretta.it" + href
+                else:
+                    match_url = href or url
 
             match_str = (
                 f"📅 {formatted_date}\n"
