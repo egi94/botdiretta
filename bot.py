@@ -126,13 +126,14 @@ def save_matches(data):
 
 def parse_stored_match(match_str):
     lines = match_str.split("\n")
-    if len(lines) < 4:
+    if len(lines) < 5:
         return None
 
     date_line = lines[0].replace("📅", "").strip()
     time_line = lines[1].replace("🕒", "").strip()
     teams_line = lines[2].replace("➡️", "").strip()
-    url_line = lines[3].replace("🔗", "").strip()
+    league_line = lines[3].replace("🎖", "").strip()
+    url_line = lines[4].replace("🔗", "").strip()
 
     try:
         parts = date_line.split()
@@ -145,7 +146,7 @@ def parse_stored_match(match_str):
 
         dt = datetime(year, month, day, hour, minute)
 
-        return dt, date_line, time_line, teams_line, url_line
+        return dt, date_line, time_line, teams_line, league_line, url_line
     except:
         return None
 
@@ -173,7 +174,7 @@ async def list_next_matches_summary():
             if not parsed:
                 continue
 
-            dt, date_line, time_line, teams_line, url_line = parsed
+            dt, date_line, time_line, teams_line, league_line, url_line = parsed
 
             if now.date() <= dt.date() <= limit.date():
                 emoji = get_sport_emoji(team)
@@ -182,6 +183,7 @@ async def list_next_matches_summary():
                     f"📅 {date_line}\n"
                     f"🕒 {time_line}\n"
                     f"➡️ {teams_line}\n"
+                    f"🎖 {league_line}\n"
                     f"🔗 {url_line}\n"
                 )
 
@@ -258,45 +260,23 @@ async def extract_matches(url: str):
             href = await link_el.get_attribute("href")
             match_url = "https://www.diretta.it" + href if href.startswith("/") else href
 
+            # Apri pagina match per estrarre campionato
+            try:
+                detail_page = await context.new_page()
+                await detail_page.goto(match_url, timeout=60000, wait_until="networkidle")
+
+                league_el = await detail_page.query_selector('span[data-testid="wcl-scores-overline-03"]')
+                league_name = (await league_el.inner_text()).strip() if league_el else "N/D"
+
+                await detail_page.close()
+
+            except:
+                league_name = "N/D"
+
+            # Gestione SRF
             if "SRF" in time_text:
-                try:
-                    detail_page = await context.new_page()
-                    await detail_page.goto(match_url, timeout=60000, wait_until="networkidle")
-
-                    date_el = await detail_page.query_selector("div.duelParticipant__startTime div")
-                    if date_el:
-                        full_date = (await date_el.inner_text()).strip()
-
-                        if "," in full_date:
-                            date_part, time_part = full_date.split(",", 1)
-                            formatted_date = date_part.strip()
-                            formatted_time = time_part.strip()
-
-                        elif " " in full_date and "." in full_date:
-                            date_part, time_part = full_date.split(" ", 1)
-                            try:
-                                dt = datetime.strptime(date_part, "%d.%m.%Y")
-                                day_name = ITALIAN_DAYS[dt.weekday()]
-                                month_name = ITALIAN_MONTHS[dt.month - 1]
-                                formatted_date = f"{day_name} {dt.day} {month_name} {dt.year}"
-                            except:
-                                formatted_date = date_part
-                            formatted_time = time_part.strip()
-
-                        else:
-                            formatted_date = full_date
-                            formatted_time = ""
-
-                    else:
-                        formatted_date = "DATA NON DISPONIBILE"
-                        formatted_time = ""
-
-                    await detail_page.close()
-
-                except:
-                    formatted_date = "DATA NON DISPONIBILE"
-                    formatted_time = ""
-
+                formatted_date = "DATA NON DISPONIBILE"
+                formatted_time = ""
             else:
                 formatted_date, formatted_time = format_match_date(time_text)
 
@@ -304,6 +284,7 @@ async def extract_matches(url: str):
                 f"📅 {formatted_date}\n"
                 f"🕒 {formatted_time}\n"
                 f"➡️ {home} vs {away}\n"
+                f"🎖 {league_name}\n"
                 f"🔗 {match_url}"
             )
 
