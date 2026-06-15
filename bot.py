@@ -68,11 +68,9 @@ def format_match_date(raw_time: str):
 def get_sport_emoji(team_name: str):
     name = team_name.lower()
 
-    # Basket
     if "basket" in name:
         return "🏀"
 
-    # Pallanuoto
     if (
         "pallanuoto" in name or
         "recco" in name or
@@ -83,11 +81,9 @@ def get_sport_emoji(team_name: str):
     ):
         return "🤽‍♂️"
 
-    # Futsal
     if "futsal" in name:
         return "🥅"
 
-    # Default: Calcio
     return "⚽"
 
 
@@ -160,7 +156,6 @@ async def extract_matches(url: str):
         matches = []
 
         for block in blocks:
-            # Tempo
             time_el = await block.query_selector("div.event__time, span.eventTime")
             time_text = (await time_el.inner_text()).strip() if time_el else "N/D"
 
@@ -174,9 +169,7 @@ async def extract_matches(url: str):
             home = (await team_els[0].inner_text()).strip()
             away = (await team_els[1].inner_text()).strip()
 
-            formatted_date, formatted_time = format_match_date(time_text)
-
-            # 🔗 LINK PARTITA SPECIFICA
+            # LINK PARTITA
             link_el = await block.query_selector("div.eventRowLink a")
 
             if link_el:
@@ -192,6 +185,29 @@ async def extract_matches(url: str):
                     match_url = "https://www.diretta.it" + href
                 else:
                     match_url = href or url
+
+            # FIX SRF → recupero data dalla pagina
+            if time_text == "SRF":
+                try:
+                    await page.goto(match_url, timeout=60000, wait_until="networkidle")
+                    date_el = await page.query_selector("div.duelParticipant__startTime div")
+                    if date_el:
+                        full_date = (await date_el.inner_text()).strip()
+                        if "," in full_date:
+                            date_part, time_part = full_date.split(",", 1)
+                            formatted_date = date_part.strip()
+                            formatted_time = time_part.strip()
+                        else:
+                            formatted_date = full_date
+                            formatted_time = ""
+                    else:
+                        formatted_date = "DATA NON DISPONIBILE"
+                        formatted_time = ""
+                except:
+                    formatted_date = "DATA NON DISPONIBILE"
+                    formatted_time = ""
+            else:
+                formatted_date, formatted_time = format_match_date(time_text)
 
             match_str = (
                 f"📅 {formatted_date}\n"
@@ -247,28 +263,20 @@ async def main():
     save_matches(updated)
     print("✅ Fine esecuzione bot")
 
-    # ORARI
-    timestamp_server = datetime.now()
-    timestamp_ita = timestamp_server + timedelta(hours=2)
+    # Calcolo partite già scansionate
+    total_scanned = sum(len(v) for v in stored.values())
 
-    server_str = timestamp_server.strftime("%H:%M")
+    # Orario italiano
+    timestamp_ita = datetime.now() + timedelta(hours=2)
     ita_str = timestamp_ita.strftime("%H:%M")
 
     # MESSAGGIO FINALE
-    if total_new_matches == 0:
-        send_telegram_message(
-            f"🔄 Scansione completata\n"
-            f"Nessuna nuova partita trovata\n"
-            f"⏰ {server_str} - ORARIO SERVER\n"
-            f"⏰ {ita_str} - ORARIO ITALIANO"
-        )
-    else:
-        send_telegram_message(
-            f"🔄 Scansione completata\n"
-            f"Nuove partite trovate: {total_new_matches}\n"
-            f"⏰ {server_str} - ORARIO SERVER\n"
-            f"⏰ {ita_str} - ORARIO ITALIANO"
-        )
+    send_telegram_message(
+        f"🔄 Scansione completata\n"
+        f"Partite già scansionate: {total_scanned}\n"
+        f"Nuove partite trovate: {total_new_matches}\n"
+        f"⏰ {ita_str}"
+    )
 
 
 if __name__ == "__main__":
