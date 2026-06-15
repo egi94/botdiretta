@@ -162,37 +162,40 @@ async def extract_matches(url: str):
             team_els = await block.query_selector_all(
                 'span[data-testid="wcl-scores-simple-text-01"]'
             )
-
             if len(team_els) < 2:
                 continue
 
             home = (await team_els[0].inner_text()).strip()
             away = (await team_els[1].inner_text()).strip()
 
-            # LINK PARTITA
-            link_el = await block.query_selector("div.eventRowLink a")
-
+            # 🔗 LINK PARTITA: prima provo un <a> che punti a /partita/
+            link_el = await block.query_selector('a[href*="/partita/"]')
             if link_el:
                 href = await link_el.get_attribute("href")
-                if href and href.startswith("/"):
-                    match_url = "https://www.diretta.it" + href
-                else:
-                    match_url = href or url
             else:
-                fallback_link = await block.query_selector("a")
-                href = await fallback_link.get_attribute("href") if fallback_link else None
-                if href and href.startswith("/"):
-                    match_url = "https://www.diretta.it" + href
+                # fallback vecchio
+                link_el = await block.query_selector("div.eventRowLink a")
+                if link_el:
+                    href = await link_el.get_attribute("href")
                 else:
-                    match_url = href or url
+                    fallback_link = await block.query_selector("a")
+                    href = await fallback_link.get_attribute("href") if fallback_link else None
 
-            # FIX SRF → recupero data dalla pagina
-            if time_text == "SRF":
+            if href and href.startswith("/"):
+                match_url = "https://www.diretta.it" + href
+            else:
+                match_url = href or url
+
+            # 🔧 FIX SRF: se nel testo compare "SRF", prendo data/ora dalla pagina partita
+            if "SRF" in time_text:
                 try:
-                    await page.goto(match_url, timeout=60000, wait_until="networkidle")
-                    date_el = await page.query_selector("div.duelParticipant__startTime div")
+                    detail_page = await context.new_page()
+                    await detail_page.goto(match_url, timeout=60000, wait_until="networkidle")
+
+                    date_el = await detail_page.query_selector("div.duelParticipant__startTime div")
                     if date_el:
                         full_date = (await date_el.inner_text()).strip()
+                        # Es: "Giovedì 2 Aprile 2026, 19:30"
                         if "," in full_date:
                             date_part, time_part = full_date.split(",", 1)
                             formatted_date = date_part.strip()
@@ -203,6 +206,8 @@ async def extract_matches(url: str):
                     else:
                         formatted_date = "DATA NON DISPONIBILE"
                         formatted_time = ""
+
+                    await detail_page.close()
                 except:
                     formatted_date = "DATA NON DISPONIBILE"
                     formatted_time = ""
@@ -270,7 +275,7 @@ async def main():
     timestamp_ita = datetime.now() + timedelta(hours=2)
     ita_str = timestamp_ita.strftime("%H:%M")
 
-    # MESSAGGIO FINALE
+    # Messaggio finale
     send_telegram_message(
         f"🔄 Scansione completata\n"
         f"Partite già scansionate: {total_scanned}\n"
