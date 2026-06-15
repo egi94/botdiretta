@@ -150,12 +150,22 @@ def parse_stored_match(match_str):
         return None
 
 
-async def list_next_matches():
+async def list_next_matches_summary():
     stored = load_matches()
     now = datetime.now()
     limit = now + timedelta(days=7)
 
-    upcoming = []
+    start_date = f"{ITALIAN_DAYS[now.weekday()]} {now.day} {ITALIAN_MONTHS[now.month-1]} {now.year}"
+    end_date = f"{ITALIAN_DAYS[limit.weekday()]} {limit.day} {ITALIAN_MONTHS[limit.month-1]} {limit.year}"
+
+    days = {}
+    for i in range(8):
+        d = now + timedelta(days=i)
+        key = d.date()
+        days[key] = {
+            "label": f"{ITALIAN_DAYS[d.weekday()]} {d.day} {ITALIAN_MONTHS[d.month-1]} {d.year}",
+            "matches": []
+        }
 
     for team, matches in stored.items():
         for m in matches:
@@ -165,26 +175,32 @@ async def list_next_matches():
 
             dt, date_line, time_line, teams_line, url_line = parsed
 
-            if now <= dt <= limit:
+            if now.date() <= dt.date() <= limit.date():
                 emoji = get_sport_emoji(team)
-                upcoming.append((dt, team, emoji, date_line, time_line, teams_line, url_line))
+                days[dt.date()]["matches"].append(
+                    f"{emoji} {team.upper()}\n"
+                    f"📅 {date_line}\n"
+                    f"🕒 {time_line}\n"
+                    f"➡️ {teams_line}\n"
+                    f"🔗 {url_line}\n"
+                )
 
-    if not upcoming:
-        send_telegram_message("Nessuna partita nei prossimi 7 giorni.")
-        return
+    msg = (
+        f"📅 *Ecco le partite dei prossimi 7 giorni*\n"
+        f"Intervallo: *{start_date}* → *{end_date}*\n\n"
+    )
 
-    upcoming.sort(key=lambda x: x[0])
+    for day_key in days:
+        count = len(days[day_key]["matches"])
+        part_word = "partita" if count == 1 else "partite"
 
-    msg = "📅 *Ecco le partite dei prossimi 7 giorni:*\n\n"
+        msg += f"📌 *{days[day_key]['label']}* ({count} {part_word})\n"
 
-    for dt, team, emoji, date_line, time_line, teams_line, url_line in upcoming:
-        msg += (
-            f"{emoji} {team.upper()}\n"
-            f"📅 {date_line}\n"
-            f"🕒 {time_line}\n"
-            f"➡️ {teams_line}\n"
-            f"🔗 {url_line}\n\n"
-        )
+        if count > 0:
+            for match in days[day_key]["matches"]:
+                msg += match + "\n"
+        else:
+            msg += "Nessuna partita\n\n"
 
     send_telegram_message(msg)
 
@@ -350,11 +366,9 @@ async def main():
         f"⏰ {ita_str}"
     )
 
+    # 🔥 INVIO AUTOMATICO RIEPILOGO 7 GIORNI
+    await list_next_matches_summary()
+
 
 if __name__ == "__main__":
-    import sys
-
-    if len(sys.argv) > 1 and sys.argv[1] == "next":
-        asyncio.run(list_next_matches())
-    else:
-        asyncio.run(main())
+    asyncio.run(main())
