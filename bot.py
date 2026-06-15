@@ -92,7 +92,8 @@ def send_telegram_message(text: str):
     try:
         r = requests.post(url, json={
             "chat_id": CHAT_ID,
-            "text": text
+            "text": text,
+            "disable_web_page_preview": True
         }, timeout=10)
         if r.status_code != 200:
             print(f"⚠️ Errore Telegram: {r.status_code} - {r.text}")
@@ -164,7 +165,6 @@ async def extract_matches(url: str):
 
             formatted_date, formatted_time = format_match_date(time_text)
 
-            # 🔗 Recupero link partita
             link_el = await block.query_selector("a")
             href = await link_el.get_attribute("href") if link_el else None
 
@@ -227,7 +227,6 @@ async def main():
     save_matches(updated)
     print("✅ Fine esecuzione bot")
 
-    # 🔄 LOG TELEGRAM FINALE
     timestamp = datetime.now().strftime("%H:%M")
 
     if total_new_matches == 0:
