@@ -31,7 +31,10 @@ ITALIAN_MONTHS = [
 ]
 
 
-def format_match_date(raw_time: str):
+def format_match_date(raw_time):
+    if not raw_time:
+        return None, None, None
+
     raw = raw_time.strip()
 
     if "." not in raw:
@@ -212,7 +215,7 @@ async def main():
                 # NUOVA PARTITA
                 send_telegram_message(
                     f"⚠️ ! NUOVA PARTITA TROVATA ! ⚠️\n\n"
-                    f"⚽ Nuova partita trovate: {team_name.upper()}\n"
+                    f"⚽ Nuova partita: {team_name.upper()}\n"
                     f"📅 {new['formatted_date']}\n"
                     f"🕒 {new['time']}\n"
                     f"➡️ {new['home']} vs {new['away']}\n"
@@ -225,7 +228,7 @@ async def main():
             if old["time"] != new["time"]:
                 send_telegram_message(
                     f"⏰ ! VARIAZIONE ORARIO TROVATA ! ⏰\n\n"
-                    f"⚽ Nuova partita trovate: {team_name.upper()}\n"
+                    f"⚽ Nuova partita: {team_name.upper()}\n"
                     f"📅 {new['formatted_date']}\n"
                     f"🕒 {new['time']}\n"
                     f"➡️ {new['home']} vs {new['away']}\n"
@@ -235,7 +238,7 @@ async def main():
             if old["date"] != new["date"]:
                 send_telegram_message(
                     f"📅 ! VARIAZIONE DATA TROVATA ! 📅\n\n"
-                    f"⚽ Nuova partita trovate: {team_name.upper()}\n"
+                    f"⚽ Nuova partita: {team_name.upper()}\n"
                     f"📅 {new['formatted_date']}\n"
                     f"🕒 {new['time']}\n"
                     f"➡️ {new['home']} vs {new['away']}\n"
