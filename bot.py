@@ -168,25 +168,16 @@ async def extract_matches(url: str):
             home = (await team_els[0].inner_text()).strip()
             away = (await team_els[1].inner_text()).strip()
 
-            # 🔗 LINK PARTITA: prima provo un <a> che punti a /partita/
+            # 🔗 LINK PARTITA — SOLO link con /partita/
             link_el = await block.query_selector('a[href*="/partita/"]')
-            if link_el:
-                href = await link_el.get_attribute("href")
-            else:
-                # fallback vecchio
-                link_el = await block.query_selector("div.eventRowLink a")
-                if link_el:
-                    href = await link_el.get_attribute("href")
-                else:
-                    fallback_link = await block.query_selector("a")
-                    href = await fallback_link.get_attribute("href") if fallback_link else None
+            if not link_el:
+                print("⚠️ Nessun link partita trovato, salto blocco")
+                continue
 
-            if href and href.startswith("/"):
-                match_url = "https://www.diretta.it" + href
-            else:
-                match_url = href or url
+            href = await link_el.get_attribute("href")
+            match_url = "https://www.diretta.it" + href if href.startswith("/") else href
 
-            # 🔧 FIX SRF: se nel testo compare "SRF", prendo data/ora dalla pagina partita
+            # 🔧 FIX SRF
             if "SRF" in time_text:
                 try:
                     detail_page = await context.new_page()
@@ -195,22 +186,39 @@ async def extract_matches(url: str):
                     date_el = await detail_page.query_selector("div.duelParticipant__startTime div")
                     if date_el:
                         full_date = (await date_el.inner_text()).strip()
-                        # Es: "Giovedì 2 Aprile 2026, 19:30"
+
                         if "," in full_date:
+                            # Formato: "Giovedì 2 Aprile 2026, 19:30"
                             date_part, time_part = full_date.split(",", 1)
                             formatted_date = date_part.strip()
                             formatted_time = time_part.strip()
+
+                        elif " " in full_date and "." in full_date:
+                            # Formato: "15.06.2026 19:30"
+                            date_part, time_part = full_date.split(" ", 1)
+                            try:
+                                dt = datetime.strptime(date_part, "%d.%m.%Y")
+                                day_name = ITALIAN_DAYS[dt.weekday()]
+                                month_name = ITALIAN_MONTHS[dt.month - 1]
+                                formatted_date = f"{day_name} {dt.day} {month_name} {dt.year}"
+                            except:
+                                formatted_date = date_part
+                            formatted_time = time_part.strip()
+
                         else:
                             formatted_date = full_date
                             formatted_time = ""
+
                     else:
                         formatted_date = "DATA NON DISPONIBILE"
                         formatted_time = ""
 
                     await detail_page.close()
+
                 except:
                     formatted_date = "DATA NON DISPONIBILE"
                     formatted_time = ""
+
             else:
                 formatted_date, formatted_time = format_match_date(time_text)
 
