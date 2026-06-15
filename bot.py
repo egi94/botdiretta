@@ -126,14 +126,13 @@ def save_matches(data):
 
 def parse_stored_match(match_str):
     lines = match_str.split("\n")
-    if len(lines) < 5:
+    if len(lines) < 4:
         return None
 
     date_line = lines[0].replace("📅", "").strip()
     time_line = lines[1].replace("🕒", "").strip()
     teams_line = lines[2].replace("➡️", "").strip()
-    league_line = lines[3].replace("🎖", "").strip()
-    url_line = lines[4].replace("🔗", "").strip()
+    url_line = lines[3].replace("🔗", "").strip()
 
     try:
         parts = date_line.split()
@@ -146,7 +145,7 @@ def parse_stored_match(match_str):
 
         dt = datetime(year, month, day, hour, minute)
 
-        return dt, date_line, time_line, teams_line, league_line, url_line
+        return dt, date_line, time_line, teams_line, url_line
     except:
         return None
 
@@ -174,7 +173,7 @@ async def list_next_matches_summary():
             if not parsed:
                 continue
 
-            dt, date_line, time_line, teams_line, league_line, url_line = parsed
+            dt, date_line, time_line, teams_line, url_line = parsed
 
             if now.date() <= dt.date() <= limit.date():
                 emoji = get_sport_emoji(team)
@@ -183,7 +182,6 @@ async def list_next_matches_summary():
                     f"📅 {date_line}\n"
                     f"🕒 {time_line}\n"
                     f"➡️ {teams_line}\n"
-                    f"🎖 {league_line}\n"
                     f"🔗 {url_line}\n"
                 )
 
@@ -234,10 +232,6 @@ async def extract_matches(url: str):
         page = await context.new_page()
         await page.goto(url, timeout=60000, wait_until="networkidle")
 
-        # Campionato dalla pagina squadra
-        league_el = await page.query_selector('span.headerLeague__title-text')
-        league_name = (await league_el.inner_text()).strip() if league_el else "N/D"
-
         blocks = await page.query_selector_all("div.event__match")
         print(f"➡️ Trovati {len(blocks)} blocchi partita (event__match)")
 
@@ -274,7 +268,6 @@ async def extract_matches(url: str):
                 f"📅 {formatted_date}\n"
                 f"🕒 {formatted_time}\n"
                 f"➡️ {home} vs {away}\n"
-                f"🎖 {league_name}\n"
                 f"🔗 {match_url}"
             )
 
@@ -304,41 +297,4 @@ async def main():
         new_list = await extract_matches(url)
         old_list = stored.get(team_name, [])
 
-        new_matches = [m for m in new_list if m not in old_list]
-        total_new_matches += len(new_matches)
-
-        print(f"🆕 Nuove partite trovate: {len(new_matches)}")
-        for match in new_matches:
-            print(f"📅 {match}")
-
-            emoji = get_sport_emoji(team_name)
-            clean_name = team_name.upper().strip()
-
-            send_telegram_message(
-                f"⚠️ ! NUOVA PARTITA TROVATA ! ⚠️\n\n"
-                f"{emoji} Nuova partita: {clean_name}\n"
-                f"{match}"
-            )
-
-        updated[team_name] = new_list
-
-    save_matches(updated)
-    print("✅ Fine esecuzione bot")
-
-    total_scanned = sum(len(v) for v in stored.values())
-
-    timestamp_ita = datetime.now() + timedelta(hours=2)
-    ita_str = timestamp_ita.strftime("%H:%M")
-
-    send_telegram_message(
-        f"🔄 Scansione completata\n"
-        f"Partite già scansionate: {total_scanned}\n"
-        f"Nuove partite trovate: {total_new_matches}\n"
-        f"⏰ {ita_str}"
-    )
-
-    await list_next_matches_summary()
-
-
-if __name__ == "__main__":
-    asyncio.run(main())
+        new_matches = [m for m in new
