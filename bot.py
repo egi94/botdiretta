@@ -234,6 +234,10 @@ async def extract_matches(url: str):
         page = await context.new_page()
         await page.goto(url, timeout=60000, wait_until="networkidle")
 
+        # Campionato dalla pagina squadra
+        league_el = await page.query_selector('span.headerLeague__title-text')
+        league_name = (await league_el.inner_text()).strip() if league_el else "N/D"
+
         blocks = await page.query_selector_all("div.event__match")
         print(f"➡️ Trovati {len(blocks)} blocchi partita (event__match)")
 
@@ -260,22 +264,6 @@ async def extract_matches(url: str):
             href = await link_el.get_attribute("href")
             match_url = "https://www.diretta.it" + href if href.startswith("/") else href
 
-            # Apri pagina match per estrarre campionato
-            try:
-                detail_page = await context.new_page()
-                await detail_page.goto(match_url, timeout=60000, wait_until="networkidle")
-
-                league_el = await detail_page.query_selector(
-                    'span[data-testid="wcl-scores-overline-03"][itemprop="name"], span.headerLeague__title-text'
-                )
-                league_name = (await league_el.inner_text()).strip() if league_el else "N/D"
-
-                await detail_page.close()
-
-            except:
-                league_name = "N/D"
-
-            # Gestione SRF
             if "SRF" in time_text:
                 formatted_date = "DATA NON DISPONIBILE"
                 formatted_time = ""
@@ -349,7 +337,6 @@ async def main():
         f"⏰ {ita_str}"
     )
 
-    # 🔥 INVIO AUTOMATICO RIEPILOGO 7 GIORNI
     await list_next_matches_summary()
 
 
