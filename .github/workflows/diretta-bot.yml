@@ -2,9 +2,12 @@ name: Run Diretta Bot
 
 on:
   schedule:
-    - cron: "0 7 * * *"     # 07:00 italiane
-    - cron: "30 23 * * *"   # 23:30 italiane
+    - cron: "0 7 * * *"
+    - cron: "30 23 * * *"
   workflow_dispatch:
+
+permissions:
+  contents: write   # NECESSARIO per fare push
 
 jobs:
   run-bot:
@@ -14,7 +17,8 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0   # NECESSARIO per evitare errori di push
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -46,8 +50,7 @@ jobs:
           git add matches.json
           git commit -m "Update matches" || echo "Nessuna modifica da commitare"
 
-          # Aggiorna il branch locale prima del push
-          git pull --rebase origin main
-
-          # Push sicuro (evita errori e non sovrascrive commit tuoi)
-          git push origin main --force-with-lease
+      - name: Push changes
+        uses: ad-m/github-push-action@v0.8.0
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
