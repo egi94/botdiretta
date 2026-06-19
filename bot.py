@@ -140,7 +140,6 @@ async def list_next_matches_summary():
     stored = load_matches()
     now = datetime.now()
 
-    # 🔥 MODIFICA: 21 giorni
     limit = now + timedelta(days=21)
 
     start_date = f"{ITALIAN_DAYS[now.weekday()]} {now.day} {ITALIAN_MONTHS[now.month-1]} {now.year}"
@@ -148,7 +147,6 @@ async def list_next_matches_summary():
 
     days = {}
 
-    # 🔥 MODIFICA: range(22) = oggi + 21 giorni
     for i in range(22):
         d = now + timedelta(days=i)
         key = d.date()
@@ -173,7 +171,6 @@ async def list_next_matches_summary():
                     f"🔗 {url_line}\n"
                 )
 
-    # 🔥 ORDINA LE PARTITE PER ORARIO
     for day_key in days:
         days[day_key]["matches"].sort(
             key=lambda m: extract_time_from_match(m)
@@ -226,17 +223,21 @@ async def extract_matches(url: str):
         matches = []
 
         for block in blocks:
+
             time_el = await block.query_selector("div.event__time, span.eventTime")
             time_text = (await time_el.inner_text()).strip() if time_el else "N/D"
 
-            team_els = await block.query_selector_all(
-                'span[data-testid="wcl-scores-simple-text-01"]'
+            # ✔️ Estrazione corretta HOME
+            home_el = await block.query_selector(
+                "div.event__homeParticipant span[data-testid='wcl-scores-simple-text-01']"
             )
-            if len(team_els) < 2:
-                continue
+            home = (await home_el.inner_text()).strip() if home_el else ""
 
-            home = (await team_els[0].inner_text()).strip()
-            away = (await team_els[1].inner_text()).strip()
+            # ✔️ Estrazione corretta AWAY
+            away_el = await block.query_selector(
+                "div.event__awayParticipant span[data-testid='wcl-scores-simple-text-01']"
+            )
+            away = (await away_el.inner_text()).strip() if away_el else ""
 
             link_el = await block.query_selector('a[href*="/partita/"]')
             if not link_el:
@@ -275,7 +276,7 @@ async def main():
 
         for home, away, match_str in extracted:
 
-            # FILTRO HOME ONLY (smart)
+            # ✔️ Filtro HOME ora funziona davvero
             if normalize(team_name) not in normalize(home):
                 continue
 
