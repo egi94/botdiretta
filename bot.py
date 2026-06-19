@@ -116,83 +116,6 @@ def save_matches(data):
     with open(MATCHES_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=4, ensure_ascii=False)
 
-def parse_stored_match(match_str):
-    lines = match_str.split("\n")
-    if len(lines) < 4:
-        return None
-    date_line = lines[0].replace("📅", "").strip()
-    time_line = lines[1].replace("🕒", "").strip()
-    teams_line = lines[2].replace("➡️", "").strip()
-    url_line = lines[3].replace("🔗", "").strip()
-    try:
-        parts = date_line.split()
-        day = int(parts[1])
-        month_name = parts[2]
-        year = int(parts[3])
-        month = ITALIAN_MONTHS.index(month_name) + 1
-        hour, minute = map(int, time_line.split(":"))
-        dt = datetime(year, month, day, hour, minute)
-        return dt, date_line, time_line, teams_line, url_line
-    except:
-        return None
-
-async def list_next_matches_summary():
-    stored = load_matches()
-    now = datetime.now()
-
-    limit = now + timedelta(days=21)
-
-    start_date = f"{ITALIAN_DAYS[now.weekday()]} {now.day} {ITALIAN_MONTHS[now.month-1]} {now.year}"
-    end_date = f"{ITALIAN_DAYS[limit.weekday()]} {limit.day} {ITALIAN_MONTHS[limit.month-1]} {limit.year}"
-
-    days = {}
-
-    for i in range(22):
-        d = now + timedelta(days=i)
-        key = d.date()
-        days[key] = {
-            "label": f"{ITALIAN_DAYS[d.weekday()]} {d.day} {ITALIAN_MONTHS[d.month-1]} {d.year}",
-            "matches": []
-        }
-
-    for team, matches in stored.items():
-        for m in matches:
-            parsed = parse_stored_match(m)
-            if not parsed:
-                continue
-            dt, date_line, time_line, teams_line, url_line = parsed
-            if now.date() <= dt.date() <= limit.date():
-                emoji = get_sport_emoji(team)
-                days[dt.date()]["matches"].append(
-                    f"{emoji} {team.upper()}\n"
-                    f"📅 {date_line}\n"
-                    f"🕒 {time_line}\n"
-                    f"➡️ {teams_line}\n"
-                    f"🔗 {url_line}\n"
-                )
-
-    for day_key in days:
-        days[day_key]["matches"].sort(
-            key=lambda m: extract_time_from_match(m)
-        )
-
-    msg = (
-        f"📅 *Ecco le partite dei prossimi 21 giorni*\n"
-        f"Intervallo: *{start_date}* → *{end_date}*\n\n"
-    )
-
-    for day_key in days:
-        count = len(days[day_key]["matches"])
-        part_word = "partita" if count == 1 else "partite"
-        msg += f"📌 *{days[day_key]['label']}* ({count} {part_word})\n"
-        if count > 0:
-            for match in days[day_key]["matches"]:
-                msg += match + "\n"
-        else:
-            msg += "Nessuna partita\n\n"
-
-    send_telegram_message(msg)
-
 async def extract_matches(url: str):
     print(f"🔎 Carico pagina: {url}")
     async with async_playwright() as p:
@@ -216,8 +139,14 @@ async def extract_matches(url: str):
         )
         page = await context.new_page()
         await page.goto(url, timeout=60000, wait_until="networkidle")
+        await page.wait_for_timeout(1500)
 
-        # ✔️ SELETTORE CORRETTO PER LA PAGINA CALENDARIO
+        # 🔥 Nome ufficiale squadra dalla pagina
+        team_official_name = await page.inner_text("div.heading__name")
+        team_official_name = team_official_name.strip()
+        team_official_norm = normalize(team_official_name)
+        print(f"🏷️ Nome ufficiale squadra: {team_official_name}")
+
         blocks = await page.query_selector_all("div[data-testid='wcl-MatchRow']")
         print(f"➡️ Trovati {len(blocks)} blocchi partita (wcl-MatchRow)")
 
@@ -225,23 +154,19 @@ async def extract_matches(url: str):
 
         for block in blocks:
 
-            # ✔️ ORARIO
             time_el = await block.query_selector("div.event__time")
             time_text = (await time_el.inner_text()).strip() if time_el else "N/D"
 
-            # ✔️ HOME
             home_el = await block.query_selector(
                 "div.event__homeParticipant span[data-testid='wcl-scores-simple-text-01']"
             )
             home = (await home_el.inner_text()).strip() if home_el else ""
 
-            # ✔️ AWAY
             away_el = await block.query_selector(
                 "div.event__awayParticipant span[data-testid='wcl-scores-simple-text-01']"
             )
             away = (await away_el.inner_text()).strip() if away_el else ""
 
-            # ✔️ LINK
             link_el = await block.query_selector("a[data-testid='wcl-MatchRow-link']")
             if not link_el:
                 continue
@@ -257,7 +182,7 @@ async def extract_matches(url: str):
                 f"🔗 {match_url}"
             )
 
-            matches.append((home, away, match_str))
+            matches.append((team_official_norm, home, away, match_str))
 
         await browser.close()
         return matches
@@ -277,10 +202,10 @@ async def main():
 
         new_list = []
 
-        for home, away, match_str in extracted:
+        for team_official_norm, home, away, match_str in extracted:
 
-            # ✔️ Filtro HOME ora funziona davvero
-            if normalize(team_name) not in normalize(home):
+            # 🔥 Filtro HOME corretto
+            if normalize(home) != team_official_norm:
                 continue
 
             new_list.append(match_str)
@@ -302,18 +227,14 @@ async def main():
     save_matches(updated)
     print("✅ Fine esecuzione bot")
 
-    total_scanned = sum(len(v) for v in stored.values())
     timestamp_ita = datetime.now() + timedelta(hours=2)
     ita_str = timestamp_ita.strftime("%H:%M")
 
     send_telegram_message(
         f"🔄 Scansione completata\n"
-        f"Partite già scansionate: {total_scanned}\n"
         f"Nuove partite trovate: {total_new_matches}\n"
         f"⏰ {ita_str}"
     )
-
-    await list_next_matches_summary()
 
 if __name__ == "__main__":
     asyncio.run(main())
