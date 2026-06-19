@@ -25,6 +25,8 @@ ITALIAN_MONTHS = [
     "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre"
 ]
 
+def normalize(name: str):
+    return name.lower().replace("_", " ").strip()
 
 def format_match_date(raw_time: str):
     raw = raw_time.strip()
@@ -52,7 +54,6 @@ def format_match_date(raw_time: str):
     formatted_time = dt.strftime("%H:%M")
     return formatted_date, formatted_time
 
-
 def get_sport_emoji(team_name: str):
     name = team_name.lower()
     if "basket" in name:
@@ -69,7 +70,6 @@ def get_sport_emoji(team_name: str):
     if "futsal" in name:
         return "🥅"
     return "⚽"
-
 
 def send_telegram_message(text: str):
     if not TELEGRAM_TOKEN or not CHAT_ID:
@@ -92,7 +92,6 @@ def send_telegram_message(text: str):
     except Exception as e:
         print(f"⚠️ Eccezione Telegram: {e}")
 
-
 def load_matches():
     if not os.path.exists(MATCHES_FILE):
         return {}
@@ -102,11 +101,9 @@ def load_matches():
     except Exception:
         return {}
 
-
 def save_matches(data):
     with open(MATCHES_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=4, ensure_ascii=False)
-
 
 def parse_stored_match(match_str):
     lines = match_str.split("\n")
@@ -127,7 +124,6 @@ def parse_stored_match(match_str):
         return dt, date_line, time_line, teams_line, url_line
     except:
         return None
-
 
 async def list_next_matches_summary():
     stored = load_matches()
@@ -173,7 +169,6 @@ async def list_next_matches_summary():
             msg += "Nessuna partita\n\n"
     send_telegram_message(msg)
 
-
 async def extract_matches(url: str):
     print(f"🔎 Carico pagina: {url}")
     async with async_playwright() as p:
@@ -197,87 +192,79 @@ async def extract_matches(url: str):
         )
         page = await context.new_page()
         await page.goto(url, timeout=60000, wait_until="networkidle")
+
         blocks = await page.query_selector_all("div.event__match")
         print(f"➡️ Trovati {len(blocks)} blocchi partita (event__match)")
-        matches = []
-        for block in blocks:
-            time_el = await block.query_selector("div.event__time, span.eventTime")
-            time_text = (await time_el.inner_text()).strip() if time_el else "N/D"
-            team_els = await block.query_selector_all(
-                'span[data-testid="wcl-scores-simple-text-01"]'
-            )
-            if len(team_els) < 2:
-                continue
-            home = (await team_els[0].inner_text()).strip()
-            away = (await team_els[1].inner_text()).strip()
-            link_el = await block.query_selector('a[href*="/partita/"]')
-            if not link_el:
-                print("⚠️ Nessun link partita trovato, salto blocco")
-                continue
-            href = await link_el.get_attribute("href")
-            match_url = "https://www.diretta.it" + href if href.startswith("/") else href
-            if "SRF" in time_text:
-                try:
-                    detail_page = await context.new_page()
-                    await detail_page.goto(match_url, timeout=60000, wait_until="networkidle")
-                    date_el = await detail_page.query_selector("div.duelParticipant__startTime div")
-                    if date_el:
-                        full_date = (await date_el.inner_text()).strip()
-                        if "," in full_date:
-                            date_part, time_part = full_date.split(",", 1)
-                            formatted_date = date_part.strip()
-                            formatted_time = time_part.strip()
-                        elif " " in full_date and "." in full_date:
-                            date_part, time_part = full_date.split(" ", 1)
-                            try:
-                                dt = datetime.strptime(date_part, "%d.%m.%Y")
-                                day_name = ITALIAN_DAYS[dt.weekday()]
-                                month_name = ITALIAN_MONTHS[dt.month - 1]
-                                formatted_date = f"{day_name} {dt.day} {month_name} {dt.year}"
-                            except:
-                                formatted_date = date_part
-                            formatted_time = time_part.strip()
-                        else:
-                            formatted_date = full_date
-                            formatted_time = ""
-                    else:
-                        formatted_date = "DATA NON DISPONIBILE"
-                        formatted_time = ""
-                    await detail_page.close()
-                except:
-                    formatted_date = "DATA NON DISPONIBILE"
-                    formatted_time = ""
-            else:
-                formatted_date, formatted_time = format_match_date(time_text)
-            match_str = (
-                f"📅 {formatted_date}\n"
-                f"🕒 {formatted_time}\n"
-                f"➡️ {home} vs {away}\n"
-                f"🔗 {match_url}"
-            )
-            matches.append(match_str)
-        await browser.close()
-        print(f"🧾 Partite estratte: {len(matches)}")
-        for m in matches:
-            print("   •", m)
-        return matches
 
+        matches = []
+
+        for block in blocks:
+
+            # 🟩 Estrazione HOME / AWAY robusta
+            home_el = await block.query_selector(
+                'div.event__homeParticipant span[data-testid="wcl-scores-simple-text-01"]'
+            )
+            away_el = await block.query_selector(
+                'div.event__awayParticipant span[data-testid="wcl-scores-simple-text-01"]'
+            )
+
+            home = (await home_el.inner_text()).strip() if home_el else ""
+            away = (await away_el.inner_text()).strip() if away_el else ""
+
+            # 🟦 FILTRO HOME ONLY (smart)
+            # team_name viene passato dal ciclo principale
+            # quindi lo gestiamo in main()
+            matches.append((home, away, block))
+
+        await browser.close()
+        return matches
 
 async def main():
     print("🚀 Avvio bot Diretta.it (Locale)")
     stored = load_matches()
     updated = {}
     total_new_matches = 0
+
     for team_name, url in TEAMS.items():
         print("\n==============================")
         print(f"👀 Squadra: {team_name}")
-        new_list = await extract_matches(url)
+
+        extracted = await extract_matches(url)
+        new_list = []
         old_list = stored.get(team_name, [])
+
+        for home, away, block in extracted:
+
+            # 🟩 FILTRO HOME ONLY (smart)
+            if normalize(team_name) not in normalize(home):
+                continue  # NON è una partita in casa
+
+            # Recupero data/ora + link come prima
+            time_el = await block.query_selector("div.event__time, span.eventTime")
+            time_text = (await time_el.inner_text()).strip() if time_el else "N/D"
+
+            link_el = await block.query_selector('a[href*="/partita/"]')
+            if not link_el:
+                continue
+            href = await link_el.get_attribute("href")
+            match_url = "https://www.diretta.it" + href if href.startswith("/") else href
+
+            formatted_date, formatted_time = format_match_date(time_text)
+
+            match_str = (
+                f"📅 {formatted_date}\n"
+                f"🕒 {formatted_time}\n"
+                f"➡️ {home} vs {away}\n"
+                f"🔗 {match_url}"
+            )
+
+            new_list.append(match_str)
+
+        # Confronto con vecchie partite
         new_matches = [m for m in new_list if m not in old_list]
         total_new_matches += len(new_matches)
-        print(f"🆕 Nuove partite trovate: {len(new_matches)}")
+
         for match in new_matches:
-            print(f"📅 {match}")
             emoji = get_sport_emoji(team_name)
             clean_name = team_name.upper().strip()
             send_telegram_message(
@@ -285,20 +272,24 @@ async def main():
                 f"{emoji} Nuova partita: {clean_name}\n"
                 f"{match}"
             )
+
         updated[team_name] = new_list
+
     save_matches(updated)
     print("✅ Fine esecuzione bot")
+
     total_scanned = sum(len(v) for v in stored.values())
     timestamp_ita = datetime.now() + timedelta(hours=2)
     ita_str = timestamp_ita.strftime("%H:%M")
+
     send_telegram_message(
         f"🔄 Scansione completata\n"
         f"Partite già scansionate: {total_scanned}\n"
         f"Nuove partite trovate: {total_new_matches}\n"
         f"⏰ {ita_str}"
     )
-    await list_next_matches_summary()
 
+    await list_next_matches_summary()
 
 if __name__ == "__main__":
     asyncio.run(main())
