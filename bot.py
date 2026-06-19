@@ -28,6 +28,17 @@ ITALIAN_MONTHS = [
 def normalize(name: str):
     return name.lower().replace("_", " ").strip()
 
+def extract_time_from_match(match: str):
+    lines = match.split("\n")
+    for line in lines:
+        if line.startswith("🕒"):
+            time_str = line.replace("🕒", "").strip()
+            try:
+                return datetime.strptime(time_str, "%H:%M").time()
+            except:
+                return datetime.strptime("00:00", "%H:%M").time()
+    return datetime.strptime("00:00", "%H:%M").time()
+
 def format_match_date(raw_time: str):
     raw = raw_time.strip()
     if "." not in raw:
@@ -128,17 +139,24 @@ def parse_stored_match(match_str):
 async def list_next_matches_summary():
     stored = load_matches()
     now = datetime.now()
-    limit = now + timedelta(days=7)
+
+    # 🔥 MODIFICA: 21 giorni
+    limit = now + timedelta(days=21)
+
     start_date = f"{ITALIAN_DAYS[now.weekday()]} {now.day} {ITALIAN_MONTHS[now.month-1]} {now.year}"
     end_date = f"{ITALIAN_DAYS[limit.weekday()]} {limit.day} {ITALIAN_MONTHS[limit.month-1]} {limit.year}"
+
     days = {}
-    for i in range(8):
+
+    # 🔥 MODIFICA: range(22) = oggi + 21 giorni
+    for i in range(22):
         d = now + timedelta(days=i)
         key = d.date()
         days[key] = {
             "label": f"{ITALIAN_DAYS[d.weekday()]} {d.day} {ITALIAN_MONTHS[d.month-1]} {d.year}",
             "matches": []
         }
+
     for team, matches in stored.items():
         for m in matches:
             parsed = parse_stored_match(m)
@@ -154,10 +172,18 @@ async def list_next_matches_summary():
                     f"➡️ {teams_line}\n"
                     f"🔗 {url_line}\n"
                 )
+
+    # 🔥 ORDINA LE PARTITE PER ORARIO
+    for day_key in days:
+        days[day_key]["matches"].sort(
+            key=lambda m: extract_time_from_match(m)
+        )
+
     msg = (
-        f"📅 *Ecco le partite dei prossimi 7 giorni*\n"
+        f"📅 *Ecco le partite dei prossimi 21 giorni*\n"
         f"Intervallo: *{start_date}* → *{end_date}*\n\n"
     )
+
     for day_key in days:
         count = len(days[day_key]["matches"])
         part_word = "partita" if count == 1 else "partite"
@@ -167,6 +193,7 @@ async def list_next_matches_summary():
                 msg += match + "\n"
         else:
             msg += "Nessuna partita\n\n"
+
     send_telegram_message(msg)
 
 async def extract_matches(url: str):
@@ -248,7 +275,7 @@ async def main():
 
         for home, away, match_str in extracted:
 
-            # 🟩 FILTRO HOME ONLY (smart)
+            # FILTRO HOME ONLY (smart)
             if normalize(team_name) not in normalize(home):
                 continue
 
