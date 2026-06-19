@@ -199,49 +199,17 @@ async def extract_matches(url: str):
         matches = []
 
         for block in blocks:
-
-            # 🟩 Estrazione HOME / AWAY robusta
-            home_el = await block.query_selector(
-                'div.event__homeParticipant span[data-testid="wcl-scores-simple-text-01"]'
-            )
-            away_el = await block.query_selector(
-                'div.event__awayParticipant span[data-testid="wcl-scores-simple-text-01"]'
-            )
-
-            home = (await home_el.inner_text()).strip() if home_el else ""
-            away = (await away_el.inner_text()).strip() if away_el else ""
-
-            # 🟦 FILTRO HOME ONLY (smart)
-            # team_name viene passato dal ciclo principale
-            # quindi lo gestiamo in main()
-            matches.append((home, away, block))
-
-        await browser.close()
-        return matches
-
-async def main():
-    print("🚀 Avvio bot Diretta.it (Locale)")
-    stored = load_matches()
-    updated = {}
-    total_new_matches = 0
-
-    for team_name, url in TEAMS.items():
-        print("\n==============================")
-        print(f"👀 Squadra: {team_name}")
-
-        extracted = await extract_matches(url)
-        new_list = []
-        old_list = stored.get(team_name, [])
-
-        for home, away, block in extracted:
-
-            # 🟩 FILTRO HOME ONLY (smart)
-            if normalize(team_name) not in normalize(home):
-                continue  # NON è una partita in casa
-
-            # Recupero data/ora + link come prima
             time_el = await block.query_selector("div.event__time, span.eventTime")
             time_text = (await time_el.inner_text()).strip() if time_el else "N/D"
+
+            team_els = await block.query_selector_all(
+                'span[data-testid="wcl-scores-simple-text-01"]'
+            )
+            if len(team_els) < 2:
+                continue
+
+            home = (await team_els[0].inner_text()).strip()
+            away = (await team_els[1].inner_text()).strip()
 
             link_el = await block.query_selector('a[href*="/partita/"]')
             if not link_el:
@@ -258,9 +226,34 @@ async def main():
                 f"🔗 {match_url}"
             )
 
+            matches.append((home, away, match_str))
+
+        await browser.close()
+        return matches
+
+async def main():
+    print("🚀 Avvio bot Diretta.it (Locale)")
+    stored = load_matches()
+    updated = {}
+    total_new_matches = 0
+
+    for team_name, url in TEAMS.items():
+        print("\n==============================")
+        print(f"👀 Squadra: {team_name}")
+
+        extracted = await extract_matches(url)
+        old_list = stored.get(team_name, [])
+
+        new_list = []
+
+        for home, away, match_str in extracted:
+
+            # 🟩 FILTRO HOME ONLY (smart)
+            if normalize(team_name) not in normalize(home):
+                continue
+
             new_list.append(match_str)
 
-        # Confronto con vecchie partite
         new_matches = [m for m in new_list if m not in old_list]
         total_new_matches += len(new_matches)
 
