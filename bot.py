@@ -139,16 +139,21 @@ async def extract_matches(url: str):
         )
         page = await context.new_page()
         await page.goto(url, timeout=60000, wait_until="networkidle")
-        await page.wait_for_timeout(1500)
+        await page.wait_for_timeout(2000)
 
-        # 🔥 Nome ufficiale squadra dalla pagina
+        # Nome ufficiale squadra
         team_official_name = await page.inner_text("div.heading__name")
         team_official_name = team_official_name.strip()
         team_official_norm = normalize(team_official_name)
         print(f"🏷️ Nome ufficiale squadra: {team_official_name}")
 
+        # Doppio selettore
         blocks = await page.query_selector_all("div[data-testid='wcl-MatchRow']")
-        print(f"➡️ Trovati {len(blocks)} blocchi partita (wcl-MatchRow)")
+
+        if len(blocks) == 0:
+            blocks = await page.query_selector_all("div.event__match")
+
+        print(f"➡️ Trovati {len(blocks)} blocchi partita")
 
         matches = []
 
@@ -158,16 +163,16 @@ async def extract_matches(url: str):
             time_text = (await time_el.inner_text()).strip() if time_el else "N/D"
 
             home_el = await block.query_selector(
-                "div.event__homeParticipant span[data-testid='wcl-scores-simple-text-01']"
+                "div.event__homeParticipant span, div.event__homeParticipant"
             )
             home = (await home_el.inner_text()).strip() if home_el else ""
 
             away_el = await block.query_selector(
-                "div.event__awayParticipant span[data-testid='wcl-scores-simple-text-01']"
+                "div.event__awayParticipant span, div.event__awayParticipant"
             )
             away = (await away_el.inner_text()).strip() if away_el else ""
 
-            link_el = await block.query_selector("a[data-testid='wcl-MatchRow-link']")
+            link_el = await block.query_selector("a")
             if not link_el:
                 continue
             href = await link_el.get_attribute("href")
@@ -204,7 +209,7 @@ async def main():
 
         for team_official_norm, home, away, match_str in extracted:
 
-            # 🔥 Filtro HOME corretto
+            # Filtro HOME corretto
             if normalize(home) != team_official_norm:
                 continue
 
