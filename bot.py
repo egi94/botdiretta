@@ -217,29 +217,32 @@ async def extract_matches(url: str):
         page = await context.new_page()
         await page.goto(url, timeout=60000, wait_until="networkidle")
 
-        blocks = await page.query_selector_all("div.event__match")
-        print(f"➡️ Trovati {len(blocks)} blocchi partita (event__match)")
+        # ✔️ SELETTORE CORRETTO PER LA PAGINA CALENDARIO
+        blocks = await page.query_selector_all("div[data-testid='wcl-MatchRow']")
+        print(f"➡️ Trovati {len(blocks)} blocchi partita (wcl-MatchRow)")
 
         matches = []
 
         for block in blocks:
 
-            time_el = await block.query_selector("div.event__time, span.eventTime")
+            # ✔️ ORARIO
+            time_el = await block.query_selector("div.event__time")
             time_text = (await time_el.inner_text()).strip() if time_el else "N/D"
 
-            # ✔️ Estrazione corretta HOME
+            # ✔️ HOME
             home_el = await block.query_selector(
                 "div.event__homeParticipant span[data-testid='wcl-scores-simple-text-01']"
             )
             home = (await home_el.inner_text()).strip() if home_el else ""
 
-            # ✔️ Estrazione corretta AWAY
+            # ✔️ AWAY
             away_el = await block.query_selector(
                 "div.event__awayParticipant span[data-testid='wcl-scores-simple-text-01']"
             )
             away = (await away_el.inner_text()).strip() if away_el else ""
 
-            link_el = await block.query_selector('a[href*="/partita/"]')
+            # ✔️ LINK
+            link_el = await block.query_selector("a[data-testid='wcl-MatchRow-link']")
             if not link_el:
                 continue
             href = await link_el.get_attribute("href")
