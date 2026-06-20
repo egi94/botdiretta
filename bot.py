@@ -232,14 +232,61 @@ async def main():
     save_matches(updated)
     print("✅ Fine esecuzione bot")
 
-    timestamp_ita = datetime.now() + timedelta(hours=2)
-    ita_str = timestamp_ita.strftime("%H:%M")
+    # === RIEPILOGO 28 GIORNI ===
+    stored = load_matches()
+    today = datetime.now()
+    limit = today + timedelta(days=28)
 
-    send_telegram_message(
-        f"🔄 Scansione completata\n"
-        f"Nuove partite trovate: {total_new_matches}\n"
-        f"⏰ {ita_str}"
-    )
+    grouped = {}
+
+    for team_name, matches in stored.items():
+        emoji = get_sport_emoji(team_name)
+        for match in matches:
+            lines = match.split("\n")
+            raw_date = lines[0].replace("📅", "").strip()
+            raw_time = lines[1].replace("🕒", "").strip()
+
+            try:
+                dt = datetime.strptime(raw_date + " " + raw_time, "%A %d %B %Y %H:%M")
+            except:
+                continue
+
+            if today <= dt <= limit:
+                key = dt.strftime("%A %d %B %Y")
+                if key not in grouped:
+                    grouped[key] = []
+                grouped[key].append((dt, team_name, emoji, match))
+
+    sorted_days = sorted(grouped.keys(), key=lambda d: datetime.strptime(d, "%A %d %B %Y"))
+
+    riepilogo = "📅 *Riepilogo partite dei prossimi 28 giorni*\n\n"
+
+    for day in sorted_days:
+        riepilogo += "───────────────────────────────\n"
+        riepilogo += f"📆 *{day}*\n\n"
+
+        grouped[day].sort(key=lambda x: x[0])
+
+        for dt, team_name, emoji, match in grouped[day]:
+            lines = match.split("\n")
+            time = lines[1].replace("🕒", "").strip()
+            vs = lines[2].replace("➡️", "").strip()
+            link = lines[3].replace("🔗", "").strip()
+
+            riepilogo += f"{emoji} *{team_name}*\n"
+            riepilogo += f"• {time} — {vs}\n"
+            riepilogo += f"  🔗 {link}\n\n"
+
+    timestamp_ita = datetime.now() + timedelta(hours=2)
+    ora = timestamp_ita.strftime("%H:%M")
+    giorno = timestamp_ita.strftime("%A %d %B")
+
+    riepilogo += "───────────────────────────────\n"
+    riepilogo += f"🔄 Scansione completata\n"
+    riepilogo += f"Nuove partite trovate: {total_new_matches}\n"
+    riepilogo += f"⏰ {ora} | {giorno}"
+
+    send_telegram_message(riepilogo)
 
 if __name__ == "__main__":
     asyncio.run(main())
