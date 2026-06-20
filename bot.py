@@ -116,6 +116,27 @@ def save_matches(data):
     with open(MATCHES_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=4, ensure_ascii=False)
 
+def parse_italian_formatted_date(date_str: str, time_str: str) -> datetime | None:
+    """
+    date_str es: 'Venerdì 19 Giugno 2026'
+    time_str es: '21:00'
+    """
+    try:
+        parts = date_str.split()
+        # parts: [weekday, day, month, year]
+        if len(parts) < 4:
+            return None
+        day = int(parts[1])
+        month_name = parts[2]
+        year = int(parts[3])
+        if month_name not in ITALIAN_MONTHS:
+            return None
+        month = ITALIAN_MONTHS.index(month_name) + 1
+        dt = datetime.strptime(time_str, "%H:%M")
+        return datetime(year, month, day, dt.hour, dt.minute)
+    except Exception:
+        return None
+
 async def extract_matches(url: str):
     print(f"🔎 Carico pagina: {url}")
     async with async_playwright() as p:
@@ -232,42 +253,65 @@ async def main():
     save_matches(updated)
     print("✅ Fine esecuzione bot")
 
-    # === RIEPILOGO 28 GIORNI ===
+    # === RIEPILOGO CALENDARIO 28 GIORNI ===
     stored = load_matches()
     today = datetime.now()
-    limit = today + timedelta(days=28)
+    start_day = today.replace(hour=0, minute=0, second=0, microsecond=0)
+    end_day = start_day + timedelta(days=28)
 
-    grouped = {}
+    # Prepara struttura: un giorno per ogni data
+    days_list = []
+    for i in range(28):
+        d = start_day + timedelta(days=i)
+        days_list.append(d)
 
+    # Mappa: data (YYYY-MM-DD) -> lista partite
+    matches_by_day = {d.date(): [] for d in days_list}
+
+    # Distribuisci le partite nei giorni
     for team_name, matches in stored.items():
         emoji = get_sport_emoji(team_name)
         for match in matches:
             lines = match.split("\n")
+            if len(lines) < 4:
+                continue
             raw_date = lines[0].replace("📅", "").strip()
             raw_time = lines[1].replace("🕒", "").strip()
 
-            try:
-                dt = datetime.strptime(raw_date + " " + raw_time, "%A %d %B %Y %H:%M")
-            except:
+            dt = parse_italian_formatted_date(raw_date, raw_time)
+            if dt is None:
                 continue
 
-            if today <= dt <= limit:
-                key = dt.strftime("%A %d %B %Y")
-                if key not in grouped:
-                    grouped[key] = []
-                grouped[key].append((dt, team_name, emoji, match))
+            if start_day <= dt < end_day:
+                matches_by_day[dt.date()].append((dt, team_name, emoji, match))
 
-    sorted_days = sorted(grouped.keys(), key=lambda d: datetime.strptime(d, "%A %d %B %Y"))
+    # Intestazione intervallo
+    def format_italian_date(d: datetime) -> str:
+        day_name = ITALIAN_DAYS[d.weekday()]
+        month_name = ITALIAN_MONTHS[d.month - 1]
+        return f"{day_name} {d.day} {month_name} {d.year}"
 
-    riepilogo = "📅 *Riepilogo partite dei prossimi 28 giorni*\n\n"
+    start_str = format_italian_date(start_day)
+    end_str = format_italian_date(end_day - timedelta(days=1))
 
-    for day in sorted_days:
+    riepilogo = "📅 *Calendario partite prossimi 28 giorni*\n"
+    riepilogo += f"Dal *{start_str}* al *{end_str}*\n\n"
+
+    # Per ogni giorno, in ordine
+    for d in days_list:
+        day_key = d.date()
+        day_label = format_italian_date(d)
         riepilogo += "───────────────────────────────\n"
-        riepilogo += f"📆 *{day}*\n\n"
+        riepilogo += f"📆 *{day_label}*\n"
 
-        grouped[day].sort(key=lambda x: x[0])
+        day_matches = sorted(matches_by_day[day_key], key=lambda x: x[0])
 
-        for dt, team_name, emoji, match in grouped[day]:
+        if not day_matches:
+            riepilogo += "• Nessuna partita in calendario\n\n"
+            continue
+
+        riepilogo += "\n"
+        for dt, team_name, emoji, match in day_matches:
             lines = match.split("\n")
             time = lines[1].replace("🕒", "").strip()
             vs = lines[2].replace("➡️", "").strip()
@@ -277,6 +321,7 @@ async def main():
             riepilogo += f"• {time} — {vs}\n"
             riepilogo += f"  🔗 {link}\n\n"
 
+    # Footer con orario e data della scansione
     timestamp_ita = datetime.now() + timedelta(hours=2)
     ora = timestamp_ita.strftime("%H:%M")
     giorno = timestamp_ita.strftime("%A %d %B")
