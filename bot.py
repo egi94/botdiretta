@@ -108,7 +108,7 @@ def send_ics_file(file_path):
     with open(file_path, "rb") as f:
         requests.post(
             url,
-            data={"chat_id": CHAT_ID, "caption": "Aggiungi a Calendar:"},
+            data={"chat_id": CHAT_ID},
             files={"document": f}
         )
 
@@ -141,6 +141,7 @@ def parse_italian_formatted_date(date_str: str, time_str: str) -> datetime | Non
     except Exception:
         return None
 
+# 🔥 VERSIONE CORRETTA COMPATIBILE MOBILE (con DTSTAMP)
 def create_ics_event(home, away, date_str, time_str, url, is_waterpolo):
     prefix = "[N][RTS]" if is_waterpolo else "[N][SD]"
 
@@ -158,12 +159,15 @@ def create_ics_event(home, away, date_str, time_str, url, is_waterpolo):
     dtstart = dt.strftime("%Y%m%dT%H%M%S")
     dtend = dt_end.strftime("%Y%m%dT%H%M%S")
 
+    dtstamp = datetime.now().strftime("%Y%m%dT%H%M%S")
+
     uid = f"{home_u}-{away_u}-{dtstart}@diretta"
 
     ics_content = f"""BEGIN:VCALENDAR
 VERSION:2.0
 BEGIN:VEVENT
 UID:{uid}
+DTSTAMP:{dtstamp}
 SUMMARY:{summary}
 DTSTART:{dtstart}
 DTEND:{dtend}
@@ -309,8 +313,7 @@ async def main():
                 send_telegram_message(
                     f"⚠️ ! NUOVA PARTITA TROVATA ! ⚠️\n\n"
                     f"{emoji} Nuova partita: {clean_name}\n"
-                    f"{match_str}\n\n"
-                    f"Aggiungi a Calendar: vedi file allegato ↓"
+                    f"{match_str}"
                 )
 
                 # ICS
@@ -347,8 +350,7 @@ async def main():
                     f"{emoji} Squadra: {clean_name}\n"
                     f"{match_str}\n\n"
                     f"{time_msg}\n"
-                    f"{date_msg}\n\n"
-                    f"Aggiungi a Calendar: vedi file allegato ↓"
+                    f"{date_msg}"
                 )
 
                 # ICS aggiornato
