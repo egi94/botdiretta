@@ -103,6 +103,15 @@ def send_telegram_message(text: str):
     except Exception as e:
         print(f"⚠️ Eccezione Telegram: {e}")
 
+def send_ics_file(file_path):
+    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendDocument"
+    with open(file_path, "rb") as f:
+        requests.post(
+            url,
+            data={"chat_id": CHAT_ID, "caption": "Aggiungi a Calendar:"},
+            files={"document": f}
+        )
+
 def load_matches():
     if not os.path.exists(MATCHES_FILE):
         return {}
@@ -131,6 +140,43 @@ def parse_italian_formatted_date(date_str: str, time_str: str) -> datetime | Non
         return datetime(year, month, day, dt.hour, dt.minute)
     except Exception:
         return None
+
+def create_ics_event(home, away, date_str, time_str, url, is_waterpolo):
+    prefix = "[N][RTS]" if is_waterpolo else "[N][SD]"
+
+    home_u = home.upper()
+    away_u = away.upper()
+
+    summary = f"{prefix} {home_u} {away_u}"
+
+    dt = parse_italian_formatted_date(date_str, time_str)
+    if dt is None:
+        return None
+
+    dt_end = dt + timedelta(hours=2)
+
+    dtstart = dt.strftime("%Y%m%dT%H%M%S")
+    dtend = dt_end.strftime("%Y%m%dT%H%M%S")
+
+    uid = f"{home_u}-{away_u}-{dtstart}@diretta"
+
+    ics_content = f"""BEGIN:VCALENDAR
+VERSION:2.0
+BEGIN:VEVENT
+UID:{uid}
+SUMMARY:{summary}
+DTSTART:{dtstart}
+DTEND:{dtend}
+DESCRIPTION:Link diretta: {url}
+END:VEVENT
+END:VCALENDAR
+"""
+
+    filename = f"{home_u}_{away_u}_{dt.strftime('%Y%m%dT%H%M')}.ics"
+    with open(filename, "w", encoding="utf-8") as f:
+        f.write(ics_content)
+
+    return filename
 
 async def extract_matches(url: str):
     print(f"🔎 Carico pagina: {url}")
@@ -259,11 +305,22 @@ async def main():
             # 1️⃣ NUOVA PARTITA
             if old_match_found is None:
                 total_new_matches += 1
+
                 send_telegram_message(
                     f"⚠️ ! NUOVA PARTITA TROVATA ! ⚠️\n\n"
                     f"{emoji} Nuova partita: {clean_name}\n"
-                    f"{match_str}"
+                    f"{match_str}\n\n"
+                    f"Aggiungi a Calendar: vedi file allegato ↓"
                 )
+
+                # ICS
+                home, away = new_vs.split(" vs ")
+                is_waterpolo = (emoji == "🤽‍♂️")
+                ics_file = create_ics_event(home, away, new_date, new_time, new_url, is_waterpolo)
+                if ics_file:
+                    send_ics_file(ics_file)
+                    os.remove(ics_file)
+
                 continue
 
             # 2️⃣ VARIAZIONE ORARIO / DATA
@@ -290,8 +347,17 @@ async def main():
                     f"{emoji} Squadra: {clean_name}\n"
                     f"{match_str}\n\n"
                     f"{time_msg}\n"
-                    f"{date_msg}"
+                    f"{date_msg}\n\n"
+                    f"Aggiungi a Calendar: vedi file allegato ↓"
                 )
+
+                # ICS aggiornato
+                home, away = new_vs.split(" vs ")
+                is_waterpolo = (emoji == "🤽‍♂️")
+                ics_file = create_ics_event(home, away, new_date, new_time, new_url, is_waterpolo)
+                if ics_file:
+                    send_ics_file(ics_file)
+                    os.remove(ics_file)
 
         updated[team_name] = new_list
 
