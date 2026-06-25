@@ -141,7 +141,6 @@ def parse_italian_formatted_date(date_str: str, time_str: str) -> datetime | Non
     except Exception:
         return None
 
-# 🔥 VERSIONE CORRETTA COMPATIBILE MOBILE (con DTSTAMP)
 def create_ics_event(home, away, date_str, time_str, url, is_waterpolo):
     prefix = "[N][RTS]" if is_waterpolo else "[N][SD]"
 
@@ -272,7 +271,8 @@ async def main():
 
         for team_official_norm, home, away, match_str in extracted:
 
-            if normalize(home) != team_official_norm:
+            # PATCH UNIVERSALE
+            if team_official_norm not in normalize(home):
                 continue
 
             new_list.append(match_str)
