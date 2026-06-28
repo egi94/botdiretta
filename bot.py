@@ -471,5 +471,133 @@ async def main():
 
     send_telegram_message(riepilogo)
 
+# ============================================================
+# === ANALISI AI PARTITE RAGGIUNGIBILI (NUOVO MODULO) ========
+# ============================================================
+
+# --- Coordinate utente ---
+USER_LAT = 44.39303075403038
+USER_LON = 8.962905825758472
+
+# --- Coordinate squadre ---
+TEAM_LOCATIONS = {
+    "VADO CALCIO": (44.27750019543724, 8.434573095857038),
+    "SPEZIA CALCIO": (44.102188533549985, 9.809017097128153),
+    "SPEZIA PRIMAVERA U19": (44.11635788106785, 9.86740059261646),
+    "GENOA FEMMINILE": (44.44445702012944, 8.968750164657989),
+    "GENOA (PRIMA SQUADRA)": (44.41643821659689, 8.952003985325629),
+    "GENOA (PRIMAVERA)": (44.44445702012944, 8.968750164657989),
+    "SAMPDORIA (PRIMA SQUADRA)": (44.41643821659689, 8.952003985325629),
+    "SAMPDORIA (PRIMAVERA)": (44.38440095379068, 9.072554472976261),
+    "CELLE VARAZZE": (44.34970752025405, 8.5587065547737),
+    "IMPERIA": (43.897959244921864, 8.037843706064809),
+    "SESTRI LEVANTE": (44.27261680914362, 9.415918232239386),
+    "LIGORNA": (44.4478309622853, 8.996516676929202),
+    "DERTHONA BASKET": (44.88929896165569, 8.836979631696888),
+    "SC QUINTO": (44.39551820865677, 8.9685691473088),
+    "BOGLIASCO FEMMINILE": (44.38122317522422, 9.068039004191519),
+    "CDM FUTSAL GENOVA": (44.54049475547218, 8.696089688404),
+    "RAPALLO PALLANUOTO FEMMINILE": (44.35794525142657, 9.212322172246232),
+    "RN SAVONA PALLANUOTO": (44.3017474009747, 8.478087237655537),
+    "ALESSANDRIA CALCIO": (44.920216077761985, 8.616514303298658),
+    "JUVENTUS U23": (44.920216077761985, 8.616514303298658)
+}
+
+# --- Pro Recco: impianti multipli ---
+PRO_RECCO_LOCATIONS = {
+    "SCIORBA": (44.44445702012944, 8.968750164657989),
+    "SANT_ANNA": (44.3740671881692, 9.105355615969316),
+    "SORI": (44.360555880119996, 9.139530848483208)
+}
+
+PRO_RECCO_WEIGHTS = {
+    "SCIORBA": 1.0,
+    "SANT_ANNA": 1.2,
+    "SORI": 1.3
+}
+
+# --- Formula Haversine ---
+from math import radians, sin, cos, sqrt, atan2
+
+def haversine(lat1, lon1, lat2, lon2):
+    R = 6371  # km
+    dlat = radians(lat2 - lat1)
+    dlon = radians(lon2 - lon1)
+    a = sin(dlat/2)**2 + cos(radians(lat1)) * cos(radians(lat2)) * sin(dlon/2)**2
+    c = 2 * atan2(sqrt(a), sqrt(1-a))
+    return R * c
+
+# --- Percorsi ---
+def percorso_senza_pedaggi(dist_km):
+    tempo_min = dist_km / 55 * 60
+    return dist_km, tempo_min, 0.0
+
+def percorso_autostrada(dist_km):
+    tempo_min = dist_km / 95 * 60
+    costo = dist_km * 0.09
+    return dist_km, tempo_min, costo
+
+# --- Scelta impianto Pro Recco ---
+def choose_pro_recco_location():
+    best_loc = None
+    best_score = float("inf")
+
+    for name, (lat, lon) in PRO_RECCO_LOCATIONS.items():
+        dist = haversine(USER_LAT, USER_LON, lat, lon)
+        score = dist * PRO_RECCO_WEIGHTS[name]
+        if score < best_score:
+            best_score = score
+            best_loc = (name, lat, lon, dist)
+
+    return best_loc  # (nome, lat, lon, distanza)
+
+# --- Analisi AI ---
+def run_ai_analysis(matches_by_day):
+    today = datetime.now().date()
+    today_matches = matches_by_day.get(today, [])
+
+    if not today_matches:
+        send_telegram_message("📊 *Analisi AI partite raggiungibili*\n\nOggi non ci sono partite.")
+        return
+
+    msg = "📊 *Analisi AI partite raggiungibili (oggi)*\n\n"
+
+    # Impianto Pro Recco scelto
+    pro_recco_choice = choose_pro_recco_location()
+    if pro_recco_choice:
+        name, lat, lon, dist = pro_recco_choice
+        msg += f"🏊 *Pro Recco impianto stimato:* {name} ({dist:.1f} km)\n\n"
+
+    # Analisi singole partite
+    for dt, team_name, emoji, match in today_matches:
+        lines = match.split("\n")
+        time = lines[1].replace("🕒", "").strip()
+        vs = lines[2].replace("➡️", "").strip()
+
+        # Coordinate squadra
+        if team_name == "PRO RECCO":
+            lat, lon = pro_recco_choice[1], pro_recco_choice[2]
+        else:
+            lat, lon = TEAM_LOCATIONS.get(team_name, (None, None))
+
+        if lat is None:
+            continue
+
+        dist = haversine(USER_LAT, USER_LON, lat, lon)
+
+        # Percorsi
+        dist_norm, t_norm, cost_norm = percorso_senza_pedaggi(dist)
+        dist_auto, t_auto, cost_auto = percorso_autostrada(dist)
+
+        msg += f"{emoji} *{team_name}* — {time}\n"
+        msg += f"Distanza: {dist:.1f} km\n"
+        msg += f"• Strada normale: {dist_norm:.1f} km — {t_norm:.0f} min — €{cost_norm:.2f}\n"
+        msg += f"• Autostrada: {dist_auto:.1f} km — {t_auto:.0f} min — €{cost_auto:.2f}\n\n"
+
+    send_telegram_message(msg)
+
+# === CHIAMATA ANALISI AI ===
+run_ai_analysis(matches_by_day)
+
 if __name__ == "__main__":
     asyncio.run(main())
