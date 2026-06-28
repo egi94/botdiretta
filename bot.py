@@ -1,10 +1,11 @@
 import os
 import json
 import asyncio
-from playwright.async_api import async_playwright
+from datetime import datetime, timedelta
+
 import requests
 from dotenv import load_dotenv
-from datetime import datetime, timedelta
+from playwright.async_api import async_playwright
 
 # Carica .env
 load_dotenv()
@@ -25,8 +26,10 @@ ITALIAN_MONTHS = [
     "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre"
 ]
 
-def normalize(name: str):
+
+def normalize(name: str) -> str:
     return name.lower().replace("_", " ").strip()
+
 
 def format_match_date(raw_time: str):
     raw = raw_time.strip()
@@ -37,23 +40,19 @@ def format_match_date(raw_time: str):
     date_bits = date_part.split(".")
     if len(date_bits) < 2:
         return raw, ""
-    d = date_bits[0]
-    m = date_bits[1]
+    d, m = date_bits[0], date_bits[1]
     year = date_bits[2] if len(date_bits) >= 3 else str(datetime.now().year)
     time_part = parts[1] if len(parts) > 1 else "00:00"
-
     try:
         dt = datetime.strptime(f"{d}.{m}.{year} {time_part}", "%d.%m.%Y %H:%M")
-    except:
+    except Exception:
         return raw, time_part
-
     day_name = ITALIAN_DAYS[dt.weekday()]
     month_name = ITALIAN_MONTHS[dt.month - 1]
-    formatted_date = f"{day_name} {dt.day} {month_name} {dt.year}"
-    formatted_time = dt.strftime("%H:%M")
-    return formatted_date, formatted_time
+    return f"{day_name} {dt.day} {month_name} {dt.year}", dt.strftime("%H:%M")
 
-def get_sport_emoji(team_name: str):
+
+def get_sport_emoji(team_name: str) -> str:
     name = team_name.lower()
     if "basket" in name:
         return "🏀"
@@ -62,6 +61,7 @@ def get_sport_emoji(team_name: str):
     if "futsal" in name:
         return "🥅"
     return "⚽"
+
 
 def send_telegram_message_with_button(text: str, url: str):
     if not TELEGRAM_TOKEN or not CHAT_ID:
@@ -78,6 +78,7 @@ def send_telegram_message_with_button(text: str, url: str):
     }
     requests.post(api_url, json=payload, timeout=10)
 
+
 def send_telegram_message(text: str):
     if not TELEGRAM_TOKEN or not CHAT_ID:
         return
@@ -93,10 +94,14 @@ def send_telegram_message(text: str):
         timeout=10
     )
 
-def send_ics_file(file_path):
+
+def send_ics_file(file_path: str):
+    if not TELEGRAM_TOKEN or not CHAT_ID:
+        return
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendDocument"
     with open(file_path, "rb") as f:
         requests.post(url, data={"chat_id": CHAT_ID}, files={"document": f})
+
 
 def load_matches():
     if not os.path.exists(MATCHES_FILE):
@@ -104,12 +109,14 @@ def load_matches():
     try:
         with open(MATCHES_FILE, "r", encoding="utf-8") as f:
             return json.load(f)
-    except:
+    except Exception:
         return {}
+
 
 def save_matches(data):
     with open(MATCHES_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=4, ensure_ascii=False)
+
 
 def parse_italian_formatted_date(date_str: str, time_str: str):
     try:
@@ -118,10 +125,11 @@ def parse_italian_formatted_date(date_str: str, time_str: str):
         month_name = parts[2]
         year = int(parts[3])
         month = ITALIAN_MONTHS.index(month_name) + 1
-        dt = datetime.strptime(time_str, "%H:%M")
-        return datetime(year, month, day, dt.hour, dt.minute)
-    except:
+        dt_time = datetime.strptime(time_str, "%H:%M")
+        return datetime(year, month, day, dt_time.hour, dt_time.minute)
+    except Exception:
         return None
+
 
 def create_ics_event(home, away, date_str, time_str, url, is_waterpolo):
     prefix = "[N][RTS]" if is_waterpolo else "[N][SD]"
@@ -166,9 +174,14 @@ END:VCALENDAR
         f.write(ics_content)
     return filename
 
-# ============================================================
-# === SCRAPING PAGINA SQUADRA ================================
-# ============================================================
+
+def parse_match_str(match_str: str):
+    lines = match_str.split("\n")
+    date = lines[0].replace("📅", "").strip()
+    time = lines[1].replace("🕒", "").strip()
+    vs = lines[2].replace("➡️", "").strip()
+    return date, time, vs
+
 
 async def extract_matches(url: str):
     async with async_playwright() as p:
@@ -203,21 +216,12 @@ async def extract_matches(url: str):
             match_url = "https://www.diretta.it" + href if href.startswith("/") else href
 
             formatted_date, formatted_time = format_match_date(time_text)
-
-            match_str = (
-                f"📅 {formatted_date}\n"
-                f"🕒 {formatted_time}\n"
-                f"➡️ {home} vs {away}"
-            )
-
+            match_str = f"📅 {formatted_date}\n🕒 {formatted_time}\n➡️ {home} vs {away}"
             matches.append((team_official_norm, home, away, match_str, match_url))
 
         await browser.close()
         return matches
 
-# ============================================================
-# === SCRAPING PAGINA PARTITA SINGOLA ========================
-# ============================================================
 
 async def extract_single_match(url: str):
     async with async_playwright() as p:
@@ -227,53 +231,56 @@ async def extract_single_match(url: str):
         await page.goto(url, timeout=60000, wait_until="networkidle")
         await page.wait_for_timeout(2000)
 
-        home = await page.inner_text("div.duelParticipant__home a.participant_participantName")
-        away = await page.inner_text("div.duelParticipant__away a.participant_participantName")
+        home = await page.inner_text(
+            "div.duelParticipant__home a.participant_participantName.participant_overflow"
+        )
+        away = await page.inner_text(
+            "div.duelParticipant__away a.participant_participantName.participant_overflow"
+        )
 
         datetime_raw = await page.inner_text("div.duelParticipant__startTime")
         formatted_date, formatted_time = format_match_date(datetime_raw)
 
-        match_str = (
-            f"📅 {formatted_date}\n"
-            f"🕒 {formatted_time}\n"
-            f"➡️ {home} vs {away}"
-        )
+        match_str = f"📅 {formatted_date}\n🕒 {formatted_time}\n➡️ {home} vs {away}"
+        await browser.close()
+        return home, away, match_str, url
 
-        return (home, away, match_str, url)
-
-# ============================================================
-# === COMANDO TELEGRAM /addmatch =============================
-# ============================================================
 
 def get_updates():
+    if not TELEGRAM_TOKEN:
+        return []
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/getUpdates"
     try:
         r = requests.get(url, timeout=10)
         return r.json().get("result", [])
-    except:
+    except Exception:
         return []
 
-async def process_addmatch_command(link: str):
 
+def create_and_send_ics_from_match(emoji, vs_str, date_str, time_str, url):
+    home_team, away_team = vs_str.split(" vs ")
+    is_waterpolo = (emoji == "🤽‍♂️")
+    ics_file = create_ics_event(home_team, away_team, date_str, time_str, url, is_waterpolo)
+    if ics_file:
+        send_ics_file(ics_file)
+        os.remove(ics_file)
+
+
+async def process_addmatch_command(link: str):
     if "/squadra/" in link:
         extracted = await extract_matches(link)
         if not extracted:
             send_telegram_message("❌ Nessuna partita trovata dal link squadra.")
             return
-        team_official_norm, home, away, match_str, match_url = extracted[0]
-
+        _, home, _, match_str, match_url = extracted[0]
     else:
         result = await extract_single_match(link)
         if not result:
             send_telegram_message("❌ Nessuna partita trovata dal link partita.")
             return
-        home, away, match_str, match_url = result
+        home, _, match_str, match_url = result
 
-    lines = match_str.split("\n")
-    new_date = lines[0].replace("📅", "").strip()
-    new_time = lines[1].replace("🕒", "").strip()
-    new_vs = lines[2].replace("➡️", "").strip()
-
+    new_date, new_time, new_vs = parse_match_str(match_str)
     emoji = get_sport_emoji(home)
 
     send_telegram_message_with_button(
@@ -281,20 +288,16 @@ async def process_addmatch_command(link: str):
         match_url
     )
 
-    home_team, away_team = new_vs.split(" vs ")
-    is_waterpolo = (emoji == "🤽‍♂️")
-    ics_file = create_ics_event(home_team, away_team, new_date, new_time, match_url, is_waterpolo)
-    if ics_file:
-        send_ics_file(ics_file)
-        os.remove(ics_file)
+    create_and_send_ics_from_match(emoji, new_vs, new_date, new_time, match_url)
 
     stored = load_matches()
-    if "MANUAL" not in stored:
-        stored["MANUAL"] = []
-    stored["MANUAL"].append(match_str)
+    manual_list = stored.get("MANUAL", [])
+    manual_list.append(match_str)
+    stored["MANUAL"] = manual_list
     save_matches(stored)
 
     send_telegram_message("✅ Partita aggiunta al riepilogo dei 28 giorni.")
+
 
 async def check_for_commands():
     updates = get_updates()
@@ -303,7 +306,6 @@ async def check_for_commands():
         text = msg.get("text", "")
         if not text:
             continue
-
         if text.startswith("/addmatch"):
             parts = text.split()
             if len(parts) < 2:
@@ -312,90 +314,27 @@ async def check_for_commands():
             link = parts[1].strip()
             await process_addmatch_command(link)
 
-# ============================================================
-# === MAIN ====================================================
-# ============================================================
 
-async def main():
+def handle_match_change(event_type: str, emoji: str, team_name: str, match_str: str, url: str):
+    clean_name = team_name.upper().strip()
+    if event_type == "new":
+        title = "⚠️ NUOVA PARTITA TROVATA ⚠️"
+    else:
+        title = "⏰ VARIAZIONE ORARIO/DATA ⏰"
+    send_telegram_message_with_button(
+        f"{title}\n\n{emoji} {clean_name}\n{match_str}",
+        url
+    )
 
-    await check_for_commands()
 
+def merge_auto_with_manual(auto_data):
     stored = load_matches()
-    updated = {}
-    total_new_matches = 0
+    manual = stored.get("MANUAL", [])
+    auto_data["MANUAL"] = manual
+    return auto_data
 
-    for team_name, url in TEAMS.items():
-        extracted = await extract_matches(url)
-        old_list = stored.get(team_name, [])
-        new_list = []
 
-        for team_official_norm, home, away, match_str, match_url in extracted:
-            if team_official_norm not in normalize(home):
-                continue
-            new_list.append((match_str, match_url))
-
-        for match_str, new_url in new_list:
-            lines = match_str.split("\n")
-            new_date = lines[0].replace("📅", "").strip()
-            new_time = lines[1].replace("🕒", "").strip()
-            new_vs = lines[2].replace("➡️", "").strip()
-
-            old_match_found = None
-            old_date = None
-            old_time = None
-
-            for old in old_list:
-                o_lines = old.split("\n")
-                o_date = o_lines[0].replace("📅", "").strip()
-                o_time = o_lines[1].replace("🕒", "").strip()
-                o_vs = o_lines[2].replace("➡️", "").strip()
-                if o_vs == new_vs:
-                    old_match_found = old
-                    old_date = o_date
-                    old_time = o_time
-                    break
-
-            emoji = get_sport_emoji(team_name)
-            clean_name = team_name.upper().strip()
-
-            if old_match_found is None:
-                total_new_matches += 1
-                send_telegram_message_with_button(
-                    f"⚠️ NUOVA PARTITA TROVATA ⚠️\n\n{emoji} {clean_name}\n{match_str}",
-                    new_url
-                )
-                home, away = new_vs.split(" vs ")
-                is_waterpolo = (emoji == "🤽‍♂️")
-                ics_file = create_ics_event(home, away, new_date, new_time, new_url, is_waterpolo)
-                if ics_file:
-                    send_ics_file(ics_file)
-                    os.remove(ics_file)
-                continue
-
-            date_changed = (old_date != new_date)
-            time_changed = (old_time != new_time)
-
-            if date_changed or time_changed:
-                total_new_matches += 1
-                send_telegram_message_with_button(
-                    f"⏰ VARIAZIONE ORARIO/DATA ⏰\n\n{emoji} {clean_name}\n{match_str}",
-                    new_url
-                )
-                home, away = new_vs.split(" vs ")
-                is_waterpolo = (emoji == "🤽‍♂️")
-                ics_file = create_ics_event(home, away, new_date, new_time, new_url, is_waterpolo)
-                if ics_file:
-                    send_ics_file(ics_file)
-                    os.remove(ics_file)
-
-        updated[team_name] = [m[0] for m in new_list]
-
-    if "MANUAL" in stored:
-        updated["MANUAL"] = stored["MANUAL"]
-
-    save_matches(updated)
-
-    stored = load_matches()
+def build_calendar_riepilogo(stored, total_new_matches: int) -> str:
     today = datetime.now()
     start_day = today.replace(hour=0, minute=0, second=0, microsecond=0)
     end_day = start_day + timedelta(days=28)
@@ -406,10 +345,8 @@ async def main():
     for team_name, matches in stored.items():
         emoji = get_sport_emoji(team_name)
         for match in matches:
-            lines = match.split("\n")
-            raw_date = lines[0].replace("📅", "").strip()
-            raw_time = lines[1].replace("🕒", "").strip()
-            dt = parse_italian_formatted_date(raw_date, raw_time)
+            date_str, time_str, _ = parse_match_str(match)
+            dt = parse_italian_formatted_date(date_str, time_str)
             if dt and start_day <= dt < end_day:
                 matches_by_day[dt.date()].append((dt, team_name, emoji, match))
 
@@ -429,19 +366,75 @@ async def main():
             continue
         riepilogo += "\n"
         for dt, team_name, emoji, match in day_matches:
-            lines = match.split("\n")
-            time = lines[1].replace("🕒", "").strip()
-            vs = lines[2].replace("➡️", "").strip()
+            _, time_str, vs_str = parse_match_str(match)
             riepilogo += f"{emoji} *{team_name}*\n"
-            riepilogo += f"• {time} — {vs}\n\n"
+            riepilogo += f"• {time_str} — {vs_str}\n\n"
 
     timestamp_ita = datetime.now() + timedelta(hours=2)
     riepilogo += "───────────────────────────────\n"
-    riepilogo += f"🔄 Scansione completata\n"
+    riepilogo += "🔄 Scansione completata\n"
     riepilogo += f"Nuove partite trovate: {total_new_matches}\n"
-    riepilogo += f"⏰ {timestamp_ita.strftime('%H:%M')}"
+    riepilogo += f"⏰ {timestamp_ita.strftime('%H:%M')} | {timestamp_ita.strftime('%A %d %B')}"
+    return riepilogo
 
+
+async def main():
+    await check_for_commands()
+
+    stored = load_matches()
+    updated = {}
+    total_new_matches = 0
+
+    for team_name, url in TEAMS.items():
+        extracted = await extract_matches(url)
+        old_list = stored.get(team_name, [])
+        new_list = []
+
+        for team_official_norm, home, _, match_str, match_url in extracted:
+            if team_official_norm not in normalize(home):
+                continue
+            new_list.append((match_str, match_url))
+
+        for match_str, new_url in new_list:
+            new_date, new_time, new_vs = parse_match_str(match_str)
+
+            old_match_found = None
+            old_date = None
+            old_time = None
+
+            for old in old_list:
+                o_date, o_time, o_vs = parse_match_str(old)
+                if o_vs == new_vs:
+                    old_match_found = old
+                    old_date = o_date
+                    old_time = o_time
+                    break
+
+            emoji = get_sport_emoji(team_name)
+
+            if old_match_found is None:
+                total_new_matches += 1
+                handle_match_change("new", emoji, team_name, match_str, new_url)
+                create_and_send_ics_from_match(emoji, new_vs, new_date, new_time, new_url)
+                continue
+
+            date_changed = (old_date != new_date)
+            time_changed = (old_time != new_time)
+
+            if date_changed or time_changed:
+                total_new_matches += 1
+                handle_match_change("change", emoji, team_name, match_str, new_url)
+                create_and_send_ics_from_match(emoji, new_vs, new_date, new_time, new_url)
+
+        updated[team_name] = [m[0] for m in new_list]
+
+    merged = merge_auto_with_manual(updated)
+    save_matches(merged)
+
+    stored_after = load_matches()
+    riepilogo = build_calendar_riepilogo(stored_after, total_new_matches)
     send_telegram_message(riepilogo)
+
 
 if __name__ == "__main__":
     asyncio.run(main())
