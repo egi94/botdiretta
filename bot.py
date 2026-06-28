@@ -150,7 +150,7 @@ def parse_italian_formatted_date(date_str: str, time_str: str) -> datetime | Non
     except Exception:
         return None
 
-# 🔥 ICS aggiornato: colore giallo + alert 30 min
+# 🔥 ICS aggiornato: EVENTO + durata 2 ore + alert 30 min
 def create_ics_event(home, away, date_str, time_str, url, is_waterpolo):
     prefix = "[N][RTS]" if is_waterpolo else "[N][SD]"
 
@@ -167,20 +167,22 @@ def create_ics_event(home, away, date_str, time_str, url, is_waterpolo):
 
     dtstart = dt.strftime("%Y%m%dT%H%M%S")
     dtend = dt_end.strftime("%Y%m%dT%H%M%S")
-
     dtstamp = datetime.now().strftime("%Y%m%dT%H%M%S")
 
     uid = f"{home_u}-{away_u}-{dtstart}@diretta"
 
     ics_content = f"""BEGIN:VCALENDAR
 VERSION:2.0
+PRODID:-//DirettaNotifiche//EN
 BEGIN:VEVENT
 UID:{uid}
 DTSTAMP:{dtstamp}
 SUMMARY:{summary}
 DTSTART:{dtstart}
 DTEND:{dtend}
-CATEGORIES:11
+CLASS:PUBLIC
+TRANSP:OPAQUE
+STATUS:CONFIRMED
 DESCRIPTION:Livescore: {url}
 BEGIN:VALARM
 TRIGGER:-PT30M
@@ -374,6 +376,78 @@ async def main():
 
     save_matches(updated)
     print("✅ Fine esecuzione bot")
+
+    # === CALENDARIO 28 GIORNI ===
+    stored = load_matches()
+    today = datetime.now()
+    start_day = today.replace(hour=0, minute=0, second=0, microsecond=0)
+    end_day = start_day + timedelta(days=28)
+
+    days_list = []
+    for i in range(28):
+        days_list.append(start_day + timedelta(days=i))
+
+    matches_by_day = {d.date(): [] for d in days_list}
+
+    for team_name, matches in stored.items():
+        emoji = get_sport_emoji(team_name)
+        for match in matches:
+            lines = match.split("\n")
+            if len(lines) < 3:
+                continue
+            raw_date = lines[0].replace("📅", "").strip()
+            raw_time = lines[1].replace("🕒", "").strip()
+
+            dt = parse_italian_formatted_date(raw_date, raw_time)
+            if dt is None:
+                continue
+
+            if start_day <= dt < end_day:
+                matches_by_day[dt.date()].append((dt, team_name, emoji, match))
+
+    def format_italian_date(d: datetime) -> str:
+        day_name = ITALIAN_DAYS[d.weekday()]
+        month_name = ITALIAN_MONTHS[d.month - 1]
+        return f"{day_name} {d.day} {month_name} {d.year}"
+
+    start_str = format_italian_date(start_day)
+    end_str = format_italian_date(end_day - timedelta(days=1))
+
+    riepilogo = "📅 *Calendario partite prossimi 28 giorni:*\n\n"
+    riepilogo += f"🌏 Dal *{start_str}* al *{end_str}*\n\n"
+
+    for d in days_list:
+        day_key = d.date()
+        day_label = format_italian_date(d)
+
+        riepilogo += "───────────────────────────────\n"
+        riepilogo += f"📌 *{day_label}*\n"
+
+        day_matches = sorted(matches_by_day[day_key], key=lambda x: x[0])
+
+        if not day_matches:
+            riepilogo += "• Nessuna partita in calendario\n\n"
+            continue
+
+        riepilogo += "\n"
+        for dt, team_name, emoji, match in day_matches:
+            lines = match.split("\n")
+            time = lines[1].replace("🕒", "").strip()
+            vs = lines[2].replace("➡️", "").strip()
+
+            riepilogo += f"{emoji} *{team_name}*\n"
+            riepilogo += f"• {time} — {vs}\n\n"
+
+    timestamp_ita = datetime.now() + timedelta(hours=2)
+    ora = timestamp_ita.strftime("%H:%M")
+    giorno = timestamp_ita.strftime("%A %d %B")
+
+    riepilogo += "───────────────────────────────\n"
+    riepilogo += f"🔄 Scansione completata\n"
+    riepilogo += f"Nuove partite trovate: {total_new_matches}\n"
+    riepilogo += f"⏰ {ora} | {giorno}"
+
+    send_telegram_message(riepilogo)
 
 if __name__ == "__main__":
     asyncio.run(main())
