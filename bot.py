@@ -82,26 +82,35 @@ def get_sport_emoji(team_name: str):
         return "🥅"
     return "⚽"
 
-def send_telegram_message(text: str):
+# 🔘 Bottone Telegram "Apri Livescore"
+def send_telegram_message_with_button(text: str, url: str):
     if not TELEGRAM_TOKEN or not CHAT_ID:
         print("⚠️ TELEGRAM_TOKEN o CHAT_ID mancanti, salto Telegram")
         return
-    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+
+    api_url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+
+    payload = {
+        "chat_id": CHAT_ID,
+        "text": text,
+        "disable_web_page_preview": True,
+        "parse_mode": "Markdown",
+        "reply_markup": {
+            "inline_keyboard": [
+                [
+                    {
+                        "text": "🔗 Apri Livescore",
+                        "url": url
+                    }
+                ]
+            ]
+        }
+    }
+
     try:
-        r = requests.post(
-            url,
-            json={
-                "chat_id": CHAT_ID,
-                "text": text,
-                "disable_web_page_preview": True,
-                "parse_mode": "Markdown"
-            },
-            timeout=10
-        )
-        if r.status_code != 200:
-            print(f"⚠️ Errore Telegram: {r.status_code} - {r.text}")
+        requests.post(api_url, json=payload, timeout=10)
     except Exception as e:
-        print(f"⚠️ Eccezione Telegram: {e}")
+        print(f"⚠️ Errore Telegram: {e}")
 
 def send_ics_file(file_path):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendDocument"
@@ -141,6 +150,7 @@ def parse_italian_formatted_date(date_str: str, time_str: str) -> datetime | Non
     except Exception:
         return None
 
+# 🔥 ICS aggiornato: colore giallo + alert 30 min
 def create_ics_event(home, away, date_str, time_str, url, is_waterpolo):
     prefix = "[N][RTS]" if is_waterpolo else "[N][SD]"
 
@@ -170,7 +180,13 @@ DTSTAMP:{dtstamp}
 SUMMARY:{summary}
 DTSTART:{dtstart}
 DTEND:{dtend}
-DESCRIPTION:Link diretta: {url}
+CATEGORIES:11
+DESCRIPTION:Livescore: {url}
+BEGIN:VALARM
+TRIGGER:-PT30M
+ACTION:DISPLAY
+DESCRIPTION:Promemoria
+END:VALARM
 END:VEVENT
 END:VCALENDAR
 """
@@ -310,10 +326,11 @@ async def main():
             if old_match_found is None:
                 total_new_matches += 1
 
-                send_telegram_message(
+                send_telegram_message_with_button(
                     f"⚠️ ! NUOVA PARTITA TROVATA ! ⚠️\n\n"
                     f"{emoji} Nuova partita: {clean_name}\n"
-                    f"{match_str}"
+                    f"{match_str}",
+                    new_url
                 )
 
                 # ICS
@@ -345,12 +362,13 @@ async def main():
                     f"Il vecchio orario era {old_time} mentre il NUOVO ORARIO è {new_time}! – NON VARIATA! –"
                 )
 
-                send_telegram_message(
+                send_telegram_message_with_button(
                     f"⏰ ! VARIAZIONE ORARIO/DATA - Nuovo orario/data! ⏰\n\n"
                     f"{emoji} Squadra: {clean_name}\n"
                     f"{match_str}\n\n"
                     f"{time_msg}\n"
-                    f"{date_msg}"
+                    f"{date_msg}",
+                    new_url
                 )
 
                 # ICS aggiornato
@@ -438,7 +456,7 @@ async def main():
     riepilogo += f"Nuove partite trovate: {total_new_matches}\n"
     riepilogo += f"⏰ {ora} | {giorno}"
 
-    send_telegram_message(riepilogo)
+    send_telegram_message_with_button(riepilogo, "https://www.diretta.it")
 
 if __name__ == "__main__":
     asyncio.run(main())
