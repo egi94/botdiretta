@@ -112,6 +112,28 @@ def send_telegram_message_with_button(text: str, url: str):
     except Exception as e:
         print(f"⚠️ Errore Telegram: {e}")
 
+# 🔧 Messaggi SENZA bottone (per riepilogo 28 giorni)
+def send_telegram_message(text: str):
+    if not TELEGRAM_TOKEN or not CHAT_ID:
+        print("⚠️ TELEGRAM_TOKEN o CHAT_ID mancanti, salto Telegram")
+        return
+    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+    try:
+        r = requests.post(
+            url,
+            json={
+                "chat_id": CHAT_ID,
+                "text": text,
+                "disable_web_page_preview": True,
+                "parse_mode": "Markdown"
+            },
+            timeout=10
+        )
+        if r.status_code != 200:
+            print(f"⚠️ Errore Telegram: {r.status_code} - {r.text}")
+    except Exception as e:
+        print(f"⚠️ Eccezione Telegram: {e}")
+
 def send_ics_file(file_path):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendDocument"
     with open(file_path, "rb") as f:
@@ -150,7 +172,7 @@ def parse_italian_formatted_date(date_str: str, time_str: str) -> datetime | Non
     except Exception:
         return None
 
-# 🔥 ICS aggiornato: EVENTO + durata 2 ore + alert 30 min
+# 🔥 ICS EVENTO + durata 2 ore + alert 30 min
 def create_ics_event(home, away, date_str, time_str, url, is_waterpolo):
     prefix = "[N][RTS]" if is_waterpolo else "[N][SD]"
 
@@ -450,4 +472,4 @@ async def main():
     send_telegram_message(riepilogo)
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    asyncio.run(main
