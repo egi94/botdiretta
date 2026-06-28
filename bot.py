@@ -448,7 +448,7 @@ async def main():
     riepilogo += f"Nuove partite trovate: {total_new_matches}\n"
     riepilogo += f"⏰ {timestamp_ita.strftime('%H:%M')} | {timestamp_ita.strftime('%A %d %B')}"
 
-        send_telegram_message(riepilogo)
+send_telegram_message(riepilogo)
 
 if __name__ == "__main__":
     asyncio.run(main())
