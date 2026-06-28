@@ -29,16 +29,45 @@ def normalize(name: str):
 
 def format_match_date(raw_time: str):
     raw = raw_time.strip()
-    if "." not in raw:
-        return raw, ""
+
+    # Caso: solo orario
+    if ":" in raw and "." not in raw:
+        today = datetime.now()
+        formatted_date = f"{ITALIAN_DAYS[today.weekday()]} {today.day} {ITALIAN_MONTHS[today.month-1]} {today.year}"
+        return formatted_date, raw
+
+    # Caso: Oggi
+    if raw.lower().startswith("oggi"):
+        time_part = raw.split()[-1]
+        today = datetime.now()
+        formatted_date = f"{ITALIAN_DAYS[today.weekday()]} {today.day} {ITALIAN_MONTHS[today.month-1]} {today.year}"
+        return formatted_date, time_part
+
+    # Caso: Domani
+    if raw.lower().startswith("domani"):
+        time_part = raw.split()[-1]
+        tomorrow = datetime.now() + timedelta(days=1)
+        formatted_date = f"{ITALIAN_DAYS[tomorrow.weekday()]} {tomorrow.day} {ITALIAN_MONTHS[tomorrow.month-1]} {tomorrow.year}"
+        return formatted_date, time_part
+
+    # Caso: 28.06.
+    if raw.count(".") == 2 and raw.endswith("."):
+        raw = raw[:-1]
+
+    # Caso: 28.06 → aggiungo anno
+    if raw.count(".") == 1:
+        raw = raw + "." + str(datetime.now().year)
+
     parts = raw.split()
-    date_part = parts[0].rstrip(".")
-    d,m,y = date_part.split(".")
+    date_part = parts[0]
     time_part = parts[1] if len(parts)>1 else "00:00"
+
     try:
+        d,m,y = date_part.split(".")
         dt = datetime.strptime(f"{d}.{m}.{y} {time_part}", "%d.%m.%Y %H:%M")
     except:
         return raw, time_part
+
     day_name = ITALIAN_DAYS[dt.weekday()]
     month_name = ITALIAN_MONTHS[dt.month-1]
     return f"{day_name} {dt.day} {month_name} {dt.year}", dt.strftime("%H:%M")
@@ -205,9 +234,20 @@ def get_updates():
     except:
         return []
 
+def consume_updates(updates):
+    if not updates:
+        return
+    last_id = updates[-1]["update_id"]
+    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/getUpdates?offset={last_id+1}"
+    try:
+        requests.get(url,timeout=10)
+    except:
+        pass
+
 async def process_addmatch_command_simple(text: str):
     try:
-        parts = text.replace("/addmatch","").strip().split()
+        raw = text.replace("/addmatch","").strip()
+        parts = raw.split()
 
         if "vs" not in parts:
             send_telegram_message("❌ Formato non valido. Usa: /addmatch HOME vs AWAY DATA ORA SPORT URL")
@@ -215,7 +255,7 @@ async def process_addmatch_command_simple(text: str):
 
         vs_index = parts.index("vs")
 
-        home = parts[vs_index-1]
+        home = " ".join(parts[:vs_index])
         away = parts[vs_index+1]
         date_raw = parts[vs_index+2]
         time_raw = parts[vs_index+3]
@@ -262,6 +302,8 @@ async def check_for_commands():
         if not text: continue
         if text.startswith("/addmatch"):
             await process_addmatch_command_simple(text)
+
+    consume_updates(updates)
 
 # ============================
 # RIEPILOGO 28 GIORNI
