@@ -211,7 +211,79 @@ async def extract_matches(url: str):
         await browser.close()
         return matches
 
+# ============================================================
+# === COMANDO TELEGRAM /addmatch =============================
+# ============================================================
+
+def get_updates():
+    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/getUpdates"
+    try:
+        r = requests.get(url, timeout=10)
+        return r.json().get("result", [])
+    except:
+        return []
+
+async def process_addmatch_command(link: str):
+    extracted = await extract_matches(link)
+    if not extracted:
+        send_telegram_message("❌ Nessuna partita trovata dal link fornito.")
+        return
+
+    team_official_norm, home, away, match_str, match_url = extracted[0]
+
+    lines = match_str.split("\n")
+    new_date = lines[0].replace("📅", "").strip()
+    new_time = lines[1].replace("🕒", "").strip()
+    new_vs = lines[2].replace("➡️", "").strip()
+
+    emoji = get_sport_emoji(home)
+
+    send_telegram_message_with_button(
+        f"➕ *Partita aggiunta manualmente*\n\n{emoji} {match_str}",
+        match_url
+    )
+
+    home_team, away_team = new_vs.split(" vs ")
+    is_waterpolo = (emoji == "🤽‍♂️")
+    ics_file = create_ics_event(home_team, away_team, new_date, new_time, match_url, is_waterpolo)
+    if ics_file:
+        send_ics_file(ics_file)
+        os.remove(ics_file)
+
+    stored = load_matches()
+    if "MANUAL" not in stored:
+        stored["MANUAL"] = []
+    stored["MANUAL"].append(match_str)
+    save_matches(stored)
+
+    send_telegram_message("✅ Partita aggiunta al riepilogo dei 28 giorni.")
+
+async def check_for_commands():
+    updates = get_updates()
+    for upd in updates:
+        msg = upd.get("message", {})
+        text = msg.get("text", "")
+        if not text:
+            continue
+
+        if text.startswith("/addmatch"):
+            parts = text.split()
+            if len(parts) < 2:
+                send_telegram_message("❌ Usa: /addmatch <link_diretta.it>")
+                continue
+            link = parts[1].strip()
+            await process_addmatch_command(link)
+
+# ============================================================
+# === MAIN ====================================================
+# ============================================================
+
 async def main():
+
+    # 🔥 Prima controlla se ci sono comandi Telegram
+    await check_for_commands()
+
+    # 🔥 Poi esegue la scansione normale
     stored = load_matches()
     updated = {}
     total_new_matches = 0
