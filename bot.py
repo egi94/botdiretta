@@ -227,13 +227,9 @@ async def extract_single_match(url: str):
         await page.goto(url, timeout=60000, wait_until="networkidle")
         await page.wait_for_timeout(2000)
 
-        # Squadra HOME
         home = await page.inner_text("div.duelParticipant__home a.participant_participantName")
-
-        # Squadra AWAY
         away = await page.inner_text("div.duelParticipant__away a.participant_participantName")
 
-        # Data + ora
         datetime_raw = await page.inner_text("div.duelParticipant__startTime")
         formatted_date, formatted_time = format_match_date(datetime_raw)
 
@@ -259,7 +255,6 @@ def get_updates():
 
 async def process_addmatch_command(link: str):
 
-    # Pagina squadra
     if "/squadra/" in link:
         extracted = await extract_matches(link)
         if not extracted:
@@ -267,7 +262,6 @@ async def process_addmatch_command(link: str):
             return
         team_official_norm, home, away, match_str, match_url = extracted[0]
 
-    # Pagina partita singola
     else:
         result = await extract_single_match(link)
         if not result:
@@ -275,7 +269,6 @@ async def process_addmatch_command(link: str):
             return
         home, away, match_str, match_url = result
 
-    # Estrazione data/ora
     lines = match_str.split("\n")
     new_date = lines[0].replace("📅", "").strip()
     new_time = lines[1].replace("🕒", "").strip()
@@ -325,10 +318,8 @@ async def check_for_commands():
 
 async def main():
 
-    # 🔥 Prima controlla se ci sono comandi Telegram
     await check_for_commands()
 
-    # 🔥 Poi esegue la scansione normale
     stored = load_matches()
     updated = {}
     total_new_matches = 0
@@ -399,9 +390,11 @@ async def main():
 
         updated[team_name] = [m[0] for m in new_list]
 
+    if "MANUAL" in stored:
+        updated["MANUAL"] = stored["MANUAL"]
+
     save_matches(updated)
 
-    # === CALENDARIO 28 GIORNI ===
     stored = load_matches()
     today = datetime.now()
     start_day = today.replace(hour=0, minute=0, second=0, microsecond=0)
@@ -446,9 +439,9 @@ async def main():
     riepilogo += "───────────────────────────────\n"
     riepilogo += f"🔄 Scansione completata\n"
     riepilogo += f"Nuove partite trovate: {total_new_matches}\n"
-    riepilogo += f"⏰ {timestamp_ita.strftime('%H:%M')} | {timestamp_ita.strftime('%A %d %B')}"
+    riepilogo += f"⏰ {timestamp_ita.strftime('%H:%M')}"
 
-send_telegram_message(riepilogo)
+    send_telegram_message(riepilogo)
 
 if __name__ == "__main__":
     asyncio.run(main())
