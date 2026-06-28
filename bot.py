@@ -82,7 +82,7 @@ def get_sport_emoji(team_name: str):
         return "🥅"
     return "⚽"
 
-# 🔘 Bottone Telegram "Apri Livescore"
+# 🔘 Bottone Telegram "LIVESCORE"
 def send_telegram_message_with_button(text: str, url: str):
     if not TELEGRAM_TOKEN or not CHAT_ID:
         print("⚠️ TELEGRAM_TOKEN o CHAT_ID mancanti, salto Telegram")
@@ -99,7 +99,7 @@ def send_telegram_message_with_button(text: str, url: str):
             "inline_keyboard": [
                 [
                     {
-                        "text": "🔗 Apri Livescore",
+                        "text": "LIVESCORE",
                         "url": url
                     }
                 ]
@@ -261,11 +261,10 @@ async def extract_matches(url: str):
             match_str = (
                 f"📅 {formatted_date}\n"
                 f"🕒 {formatted_time}\n"
-                f"➡️ {home} vs {away}\n"
-                f"🔗 {match_url}"
+                f"➡️ {home} vs {away}"
             )
 
-            matches.append((team_official_norm, home, away, match_str))
+            matches.append((team_official_norm, home, away, match_str, match_url))
 
         await browser.close()
         return matches
@@ -285,22 +284,19 @@ async def main():
 
         new_list = []
 
-        for team_official_norm, home, away, match_str in extracted:
+        for team_official_norm, home, away, match_str, match_url in extracted:
 
-            # PATCH UNIVERSALE
             if team_official_norm not in normalize(home):
                 continue
 
-            new_list.append(match_str)
+            new_list.append((match_str, match_url))
 
-        # --- NUOVA LOGICA VARIAZIONI ORARIO/DATA ---
-        for match_str in new_list:
+        for match_str, new_url in new_list:
 
             lines = match_str.split("\n")
             new_date = lines[0].replace("📅", "").strip()
             new_time = lines[1].replace("🕒", "").strip()
             new_vs = lines[2].replace("➡️", "").strip()
-            new_url = lines[3].replace("🔗", "").strip()
 
             old_match_found = None
             old_date = None
@@ -311,9 +307,8 @@ async def main():
                 o_date = o_lines[0].replace("📅", "").strip()
                 o_time = o_lines[1].replace("🕒", "").strip()
                 o_vs = o_lines[2].replace("➡️", "").strip()
-                o_url = o_lines[3].replace("🔗", "").strip()
 
-                if o_vs == new_vs and o_url == new_url:
+                if o_vs == new_vs:
                     old_match_found = old
                     old_date = o_date
                     old_time = o_time
@@ -322,7 +317,6 @@ async def main():
             emoji = get_sport_emoji(team_name)
             clean_name = team_name.upper().strip()
 
-            # 1️⃣ NUOVA PARTITA
             if old_match_found is None:
                 total_new_matches += 1
 
@@ -333,7 +327,6 @@ async def main():
                     new_url
                 )
 
-                # ICS
                 home, away = new_vs.split(" vs ")
                 is_waterpolo = (emoji == "🤽‍♂️")
                 ics_file = create_ics_event(home, away, new_date, new_time, new_url, is_waterpolo)
@@ -343,7 +336,6 @@ async def main():
 
                 continue
 
-            # 2️⃣ VARIAZIONE ORARIO / DATA
             date_changed = (old_date != new_date)
             time_changed = (old_time != new_time)
 
@@ -371,7 +363,6 @@ async def main():
                     new_url
                 )
 
-                # ICS aggiornato
                 home, away = new_vs.split(" vs ")
                 is_waterpolo = (emoji == "🤽‍♂️")
                 ics_file = create_ics_event(home, away, new_date, new_time, new_url, is_waterpolo)
@@ -379,84 +370,10 @@ async def main():
                     send_ics_file(ics_file)
                     os.remove(ics_file)
 
-        updated[team_name] = new_list
+        updated[team_name] = [m[0] for m in new_list]
 
     save_matches(updated)
     print("✅ Fine esecuzione bot")
-
-    # === CALENDARIO 28 GIORNI ===
-    stored = load_matches()
-    today = datetime.now()
-    start_day = today.replace(hour=0, minute=0, second=0, microsecond=0)
-    end_day = start_day + timedelta(days=28)
-
-    days_list = []
-    for i in range(28):
-        days_list.append(start_day + timedelta(days=i))
-
-    matches_by_day = {d.date(): [] for d in days_list}
-
-    for team_name, matches in stored.items():
-        emoji = get_sport_emoji(team_name)
-        for match in matches:
-            lines = match.split("\n")
-            if len(lines) < 4:
-                continue
-            raw_date = lines[0].replace("📅", "").strip()
-            raw_time = lines[1].replace("🕒", "").strip()
-
-            dt = parse_italian_formatted_date(raw_date, raw_time)
-            if dt is None:
-                continue
-
-            if start_day <= dt < end_day:
-                matches_by_day[dt.date()].append((dt, team_name, emoji, match))
-
-    def format_italian_date(d: datetime) -> str:
-        day_name = ITALIAN_DAYS[d.weekday()]
-        month_name = ITALIAN_MONTHS[d.month - 1]
-        return f"{day_name} {d.day} {month_name} {d.year}"
-
-    start_str = format_italian_date(start_day)
-    end_str = format_italian_date(end_day - timedelta(days=1))
-
-    riepilogo = "📅 *Calendario partite prossimi 28 giorni:*\n\n"
-    riepilogo += f"🌏 Dal *{start_str}* al *{end_str}*\n\n"
-
-    for d in days_list:
-        day_key = d.date()
-        day_label = format_italian_date(d)
-
-        riepilogo += "───────────────────────────────\n"
-        riepilogo += f"📌 *{day_label}*\n"
-
-        day_matches = sorted(matches_by_day[day_key], key=lambda x: x[0])
-
-        if not day_matches:
-            riepilogo += "• Nessuna partita in calendario\n\n"
-            continue
-
-        riepilogo += "\n"
-        for dt, team_name, emoji, match in day_matches:
-            lines = match.split("\n")
-            time = lines[1].replace("🕒", "").strip()
-            vs = lines[2].replace("➡️", "").strip()
-            link = lines[3].replace("🔗", "").strip()
-
-            riepilogo += f"{emoji} *{team_name}*\n"
-            riepilogo += f"• {time} — {vs}\n"
-            riepilogo += f"  🔗 {link}\n\n"
-
-    timestamp_ita = datetime.now() + timedelta(hours=2)
-    ora = timestamp_ita.strftime("%H:%M")
-    giorno = timestamp_ita.strftime("%A %d %B")
-
-    riepilogo += "───────────────────────────────\n"
-    riepilogo += f"🔄 Scansione completata\n"
-    riepilogo += f"Nuove partite trovate: {total_new_matches}\n"
-    riepilogo += f"⏰ {ora} | {giorno}"
-
-    send_telegram_message_with_button(riepilogo, "https://www.diretta.it")
 
 if __name__ == "__main__":
     asyncio.run(main())
