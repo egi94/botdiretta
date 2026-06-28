@@ -5,6 +5,7 @@ from playwright.async_api import async_playwright
 import requests
 from dotenv import load_dotenv
 from datetime import datetime, timedelta
+from math import radians, sin, cos, sqrt, atan2
 
 # Carica il file .env
 load_dotenv()
@@ -143,35 +144,6 @@ def send_ics_file(file_path):
             files={"document": f}
         )
 
-def load_matches():
-    if not os.path.exists(MATCHES_FILE):
-        return {}
-    try:
-        with open(MATCHES_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except Exception:
-        return {}
-
-def save_matches(data):
-    with open(MATCHES_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=4, ensure_ascii=False)
-
-def parse_italian_formatted_date(date_str: str, time_str: str) -> datetime | None:
-    try:
-        parts = date_str.split()
-        if len(parts) < 4:
-            return None
-        day = int(parts[1])
-        month_name = parts[2]
-        year = int(parts[3])
-        if month_name not in ITALIAN_MONTHS:
-            return None
-        month = ITALIAN_MONTHS.index(month_name) + 1
-        dt = datetime.strptime(time_str, "%H:%M")
-        return datetime(year, month, day, dt.hour, dt.minute)
-    except Exception:
-        return None
-
 # 🔥 ICS EVENTO + durata 2 ore + alert 30 min
 def create_ics_event(home, away, date_str, time_str, url, is_waterpolo):
     prefix = "[N][RTS]" if is_waterpolo else "[N][SD]"
@@ -221,6 +193,114 @@ END:VCALENDAR
 
     return filename
 
+
+# 🔎 Estrazione partite da Diretta.it
+async def extract_matches(url: str):
+    print(f"🔎 Carico pagina: {url}")
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(
+            headless=True,
+            args=[
+                "--disable-blink-features=AutomationControlled",
+                "--no-sandbox",
+                "--disable-dev-shm-usage"
+            ]
+        )
+        context = await browser.new_context(
+            user_agent=(
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/124.0.0.0 Safari/537.36"
+            ),
+            viewport={"width": 1366, "height": 768},
+            locale="it-IT",
+            timezone_id="Europe/Rome"
+        )
+        page = await context.new_page()
+        await page.goto(url, timeout=60000, wait_until="networkidle")
+        await page.wait_for_timeout(2000)
+
+        team_official_name =
+
+def load_matches():
+    if not os.path.exists(MATCHES_FILE):
+        return {}
+    try:
+        with open(MATCHES_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+def save_matches(data):
+    with open(MATCHES_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=4, ensure_ascii=False)
+
+def parse_italian_formatted_date(date_str: str, time_str: str) -> datetime | None:
+    try:
+        parts = date_str.split()
+        if len(parts) < 4:
+            return None
+        day = int(parts[1])
+        month_name = parts[2]
+        year = int(parts[3])
+        if month_name not in ITALIAN_MONTHS:
+            return None
+        month = ITALIAN_MONTHS.index(month_name) + 1
+        dt = datetime.strptime(time_str, "%H:%M")
+        return datetime(year, month, day, dt.hour, dt.minute)
+    except Exception:
+        return None
+# 🔥 ICS EVENTO + durata 2 ore + alert 30 min
+def create_ics_event(home, away, date_str, time_str, url, is_waterpolo):
+    prefix = "[N][RTS]" if is_waterpolo else "[N][SD]"
+
+    home_u = home.upper()
+    away_u = away.upper()
+
+    summary = f"{prefix} {home_u} {away_u}"
+
+    dt = parse_italian_formatted_date(date_str, time_str)
+    if dt is None:
+        return None
+
+    dt_end = dt + timedelta(hours=2)
+
+    dtstart = dt.strftime("%Y%m%dT%H%M%S")
+    dtend = dt_end.strftime("%Y%m%dT%H%M%S")
+    dtstamp = datetime.now().strftime("%Y%m%dT%H%M%S")
+
+    uid = f"{home_u}-{away_u}-{dtstart}@diretta"
+
+    ics_content = f"""BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//DirettaNotifiche//EN
+BEGIN:VEVENT
+UID:{uid}
+DTSTAMP:{dtstamp}
+SUMMARY:{summary}
+DTSTART:{dtstart}
+DTEND:{dtend}
+CLASS:PUBLIC
+TRANSP:OPAQUE
+STATUS:CONFIRMED
+DESCRIPTION:Livescore: {url}
+BEGIN:VALARM
+TRIGGER:-PT30M
+ACTION:DISPLAY
+DESCRIPTION:Promemoria
+END:VALARM
+END:VEVENT
+END:VCALENDAR
+"""
+
+    filename = f"{home_u}_{away_u}_{dt.strftime('%Y%m%dT%H%M')}.ics"
+    with open(filename, "w", encoding="utf-8") as f:
+        f.write(ics_content)
+
+    return filename
+
+
+# 🔎 Estrazione partite da Diretta.it
 async def extract_matches(url: str):
     print(f"🔎 Carico pagina: {url}")
     async with async_playwright() as p:
@@ -292,8 +372,7 @@ async def extract_matches(url: str):
 
         await browser.close()
         return matches
-
-async def main():
+       async def main():
     print("🚀 Avvio bot Diretta.it (Locale)")
     stored = load_matches()
     updated = {}
@@ -469,10 +548,13 @@ async def main():
     riepilogo += f"Nuove partite trovate: {total_new_matches}\n"
     riepilogo += f"⏰ {ora} | {giorno}"
 
+    # --- Invio riepilogo 28 giorni ---
     send_telegram_message(riepilogo)
 
+    # --- ANALISI AI PARTITE RAGGIUNGIBILI ---
+    run_ai_analysis(matches_by_day)
 # ============================================================
-# === ANALISI AI PARTITE RAGGIUNGIBILI (NUOVO MODULO) ========
+# === ANALISI AI PARTITE RAGGIUNGIBILI (MODULO COMPLETO) =====
 # ============================================================
 
 # --- Coordinate utente ---
@@ -517,8 +599,6 @@ PRO_RECCO_WEIGHTS = {
 }
 
 # --- Formula Haversine ---
-from math import radians, sin, cos, sqrt, atan2
-
 def haversine(lat1, lon1, lat2, lon2):
     R = 6371  # km
     dlat = radians(lat2 - lat1)
@@ -596,8 +676,3 @@ def run_ai_analysis(matches_by_day):
 
     send_telegram_message(msg)
 
-# === CHIAMATA ANALISI AI ===
-run_ai_analysis(matches_by_day)
-
-if __name__ == "__main__":
-    asyncio.run(main())
