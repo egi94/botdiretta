@@ -472,4 +472,4 @@ async def main():
     send_telegram_message(riepilogo)
 
 if __name__ == "__main__":
-    asyncio.run(main
+    asyncio.run(main())
