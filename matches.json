@@ -1,379 +1,49 @@
-import os
-import json
-import asyncio
-from playwright.async_api import async_playwright
-import requests
-from dotenv import load_dotenv
-from datetime import datetime, timedelta
-
-# Carica il file .env
-load_dotenv()
-
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
-CHAT_ID = os.getenv("CHAT_ID")
-TEAMS = json.loads(os.getenv("TEAMS", "{}"))
-
-MATCHES_FILE = "matches.json"
-
-ITALIAN_DAYS = [
-    "Lunedì", "Martedì", "Mercoledì",
-    "Giovedì", "Venerdì", "Sabato", "Domenica"
-]
-
-ITALIAN_MONTHS = [
-    "Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno",
-    "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre"
-]
-
-def normalize(name: str):
-    return name.lower().replace("_", " ").strip()
-
-def extract_time_from_match(match: str):
-    lines = match.split("\n")
-    for line in lines:
-        if line.startswith("🕒"):
-            time_str = line.replace("🕒", "").strip()
-            try:
-                return datetime.strptime(time_str, "%H:%M").time()
-            except:
-                return datetime.strptime("00:00", "%H:%M").time()
-    return datetime.strptime("00:00", "%H:%M").time()
-
-def format_match_date(raw_time: str):
-    raw = raw_time.strip()
-    if "." not in raw:
-        return raw, ""
-    parts = raw.split()
-    date_part = parts[0].rstrip(".")
-    date_bits = date_part.split(".")
-    if len(date_bits) < 2:
-        return raw, ""
-    d = date_bits[0]
-    m = date_bits[1]
-    if len(date_bits) >= 3:
-        year = date_bits[2]
-    else:
-        year = str(datetime.now().year)
-    time_part = parts[1] if len(parts) > 1 else "00:00"
-    try:
-        dt = datetime.strptime(f"{d}.{m}.{year} {time_part}", "%d.%m.%Y %H:%M")
-    except:
-        return raw, time_part
-    day_name = ITALIAN_DAYS[dt.weekday()]
-    month_name = ITALIAN_MONTHS[dt.month - 1]
-    formatted_date = f"{day_name} {dt.day} {month_name} {dt.year}"
-    formatted_time = dt.strftime("%H:%M")
-    return formatted_date, formatted_time
-
-def get_sport_emoji(team_name: str):
-    name = team_name.lower()
-    if "basket" in name:
-        return "🏀"
-    if (
-        "pallanuoto" in name or
-        "recco" in name or
-        "quinto" in name or
-        "bogliasco" in name or
-        "savona" in name or
-        "rapallo" in name
-    ):
-        return "🤽‍♂️"
-    if "futsal" in name:
-        return "🥅"
-    return "⚽"
-
-# 🔘 Bottone Telegram "LIVESCORE"
-def send_telegram_message_with_button(text: str, url: str):
-    if not TELEGRAM_TOKEN or not CHAT_ID:
-        print("⚠️ TELEGRAM_TOKEN o CHAT_ID mancanti, salto Telegram")
-        return
-
-    api_url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-
-    payload = {
-        "chat_id": CHAT_ID,
-        "text": text,
-        "disable_web_page_preview": True,
-        "parse_mode": "Markdown",
-        "reply_markup": {
-            "inline_keyboard": [
-                [
-                    {
-                        "text": "LIVESCORE",
-                        "url": url
-                    }
-                ]
-            ]
-        }
-    }
-
-    try:
-        requests.post(api_url, json=payload, timeout=10)
-    except Exception as e:
-        print(f"⚠️ Errore Telegram: {e}")
-
-def send_ics_file(file_path):
-    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendDocument"
-    with open(file_path, "rb") as f:
-        requests.post(
-            url,
-            data={"chat_id": CHAT_ID},
-            files={"document": f}
-        )
-
-def load_matches():
-    if not os.path.exists(MATCHES_FILE):
-        return {}
-    try:
-        with open(MATCHES_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except Exception:
-        return {}
-
-def save_matches(data):
-    with open(MATCHES_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=4, ensure_ascii=False)
-
-def parse_italian_formatted_date(date_str: str, time_str: str) -> datetime | None:
-    try:
-        parts = date_str.split()
-        if len(parts) < 4:
-            return None
-        day = int(parts[1])
-        month_name = parts[2]
-        year = int(parts[3])
-        if month_name not in ITALIAN_MONTHS:
-            return None
-        month = ITALIAN_MONTHS.index(month_name) + 1
-        dt = datetime.strptime(time_str, "%H:%M")
-        return datetime(year, month, day, dt.hour, dt.minute)
-    except Exception:
-        return None
-
-# 🔥 ICS aggiornato: colore giallo + alert 30 min
-def create_ics_event(home, away, date_str, time_str, url, is_waterpolo):
-    prefix = "[N][RTS]" if is_waterpolo else "[N][SD]"
-
-    home_u = home.upper()
-    away_u = away.upper()
-
-    summary = f"{prefix} {home_u} {away_u}"
-
-    dt = parse_italian_formatted_date(date_str, time_str)
-    if dt is None:
-        return None
-
-    dt_end = dt + timedelta(hours=2)
-
-    dtstart = dt.strftime("%Y%m%dT%H%M%S")
-    dtend = dt_end.strftime("%Y%m%dT%H%M%S")
-
-    dtstamp = datetime.now().strftime("%Y%m%dT%H%M%S")
-
-    uid = f"{home_u}-{away_u}-{dtstart}@diretta"
-
-    ics_content = f"""BEGIN:VCALENDAR
-VERSION:2.0
-BEGIN:VEVENT
-UID:{uid}
-DTSTAMP:{dtstamp}
-SUMMARY:{summary}
-DTSTART:{dtstart}
-DTEND:{dtend}
-CATEGORIES:11
-DESCRIPTION:Livescore: {url}
-BEGIN:VALARM
-TRIGGER:-PT30M
-ACTION:DISPLAY
-DESCRIPTION:Promemoria
-END:VALARM
-END:VEVENT
-END:VCALENDAR
-"""
-
-    filename = f"{home_u}_{away_u}_{dt.strftime('%Y%m%dT%H%M')}.ics"
-    with open(filename, "w", encoding="utf-8") as f:
-        f.write(ics_content)
-
-    return filename
-
-async def extract_matches(url: str):
-    print(f"🔎 Carico pagina: {url}")
-    async with async_playwright() as p:
-        browser = await p.chromium.launch(
-            headless=True,
-            args=[
-                "--disable-blink-features=AutomationControlled",
-                "--no-sandbox",
-                "--disable-dev-shm-usage"
-            ]
-        )
-        context = await browser.new_context(
-            user_agent=(
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/124.0.0.0 Safari/537.36"
-            ),
-            viewport={"width": 1366, "height": 768},
-            locale="it-IT",
-            timezone_id="Europe/Rome"
-        )
-        page = await context.new_page()
-        await page.goto(url, timeout=60000, wait_until="networkidle")
-        await page.wait_for_timeout(2000)
-
-        team_official_name = await page.inner_text("div.heading__name")
-        team_official_name = team_official_name.strip()
-        team_official_norm = normalize(team_official_name)
-        print(f"🏷️ Nome ufficiale squadra: {team_official_name}")
-
-        blocks = await page.query_selector_all("div[data-testid='wcl-MatchRow']")
-        if len(blocks) == 0:
-            blocks = await page.query_selector_all("div.event__match")
-
-        print(f"➡️ Trovati {len(blocks)} blocchi partita")
-
-        matches = []
-
-        for block in blocks:
-
-            time_el = await block.query_selector("div.event__time")
-            time_text = (await time_el.inner_text()).strip() if time_el else "N/D"
-
-            home_el = await block.query_selector(
-                "div.event__homeParticipant span, div.event__homeParticipant"
-            )
-            home = (await home_el.inner_text()).strip() if home_el else ""
-
-            away_el = await block.query_selector(
-                "div.event__awayParticipant span, div.event__awayParticipant"
-            )
-            away = (await away_el.inner_text()).strip() if away_el else ""
-
-            link_el = await block.query_selector("a")
-            if not link_el:
-                continue
-            href = await link_el.get_attribute("href")
-            match_url = "https://www.diretta.it" + href if href.startswith("/") else href
-
-            formatted_date, formatted_time = format_match_date(time_text)
-
-            match_str = (
-                f"📅 {formatted_date}\n"
-                f"🕒 {formatted_time}\n"
-                f"➡️ {home} vs {away}"
-            )
-
-            matches.append((team_official_norm, home, away, match_str, match_url))
-
-        await browser.close()
-        return matches
-
-async def main():
-    print("🚀 Avvio bot Diretta.it (Locale)")
-    stored = load_matches()
-    updated = {}
-    total_new_matches = 0
-
-    for team_name, url in TEAMS.items():
-        print("\n==============================")
-        print(f"👀 Squadra: {team_name}")
-
-        extracted = await extract_matches(url)
-        old_list = stored.get(team_name, [])
-
-        new_list = []
-
-        for team_official_norm, home, away, match_str, match_url in extracted:
-
-            if team_official_norm not in normalize(home):
-                continue
-
-            new_list.append((match_str, match_url))
-
-        for match_str, new_url in new_list:
-
-            lines = match_str.split("\n")
-            new_date = lines[0].replace("📅", "").strip()
-            new_time = lines[1].replace("🕒", "").strip()
-            new_vs = lines[2].replace("➡️", "").strip()
-
-            old_match_found = None
-            old_date = None
-            old_time = None
-
-            for old in old_list:
-                o_lines = old.split("\n")
-                o_date = o_lines[0].replace("📅", "").strip()
-                o_time = o_lines[1].replace("🕒", "").strip()
-                o_vs = o_lines[2].replace("➡️", "").strip()
-
-                if o_vs == new_vs:
-                    old_match_found = old
-                    old_date = o_date
-                    old_time = o_time
-                    break
-
-            emoji = get_sport_emoji(team_name)
-            clean_name = team_name.upper().strip()
-
-            if old_match_found is None:
-                total_new_matches += 1
-
-                send_telegram_message_with_button(
-                    f"⚠️ ! NUOVA PARTITA TROVATA ! ⚠️\n\n"
-                    f"{emoji} Nuova partita: {clean_name}\n"
-                    f"{match_str}",
-                    new_url
-                )
-
-                home, away = new_vs.split(" vs ")
-                is_waterpolo = (emoji == "🤽‍♂️")
-                ics_file = create_ics_event(home, away, new_date, new_time, new_url, is_waterpolo)
-                if ics_file:
-                    send_ics_file(ics_file)
-                    os.remove(ics_file)
-
-                continue
-
-            date_changed = (old_date != new_date)
-            time_changed = (old_time != new_time)
-
-            if date_changed or time_changed:
-                total_new_matches += 1
-
-                date_msg = (
-                    f"La vecchia data era {old_date} mentre la NUOVA DATA è {new_date}!"
-                    if date_changed else
-                    f"La vecchia data era {old_date} mentre la NUOVA DATA è {new_date}! – NON VARIATA! –"
-                )
-
-                time_msg = (
-                    f"Il vecchio orario era {old_time} mentre il NUOVO ORARIO è {new_time}!"
-                    if time_changed else
-                    f"Il vecchio orario era {old_time} mentre il NUOVO ORARIO è {new_time}! – NON VARIATA! –"
-                )
-
-                send_telegram_message_with_button(
-                    f"⏰ ! VARIAZIONE ORARIO/DATA - Nuovo orario/data! ⏰\n\n"
-                    f"{emoji} Squadra: {clean_name}\n"
-                    f"{match_str}\n\n"
-                    f"{time_msg}\n"
-                    f"{date_msg}",
-                    new_url
-                )
-
-                home, away = new_vs.split(" vs ")
-                is_waterpolo = (emoji == "🤽‍♂️")
-                ics_file = create_ics_event(home, away, new_date, new_time, new_url, is_waterpolo)
-                if ics_file:
-                    send_ics_file(ics_file)
-                    os.remove(ics_file)
-
-        updated[team_name] = [m[0] for m in new_list]
-
-    save_matches(updated)
-    print("✅ Fine esecuzione bot")
-
-if __name__ == "__main__":
-    asyncio.run(main())
+{
+    "VADO CALCIO": [],
+    "SPEZIA CALCIO": [],
+    "SPEZIA PRIMAVERA U19": [],
+    "GENOA FEMMINILE": [],
+    "GENOA (PRIMA SQUADRA)": [
+        "📅 Domenica 19 Luglio 2026\n🕒 14:00\n➡️ Genoa (Ita) vs Trento (Ita)",
+        "📅 Sabato 25 Luglio 2026\n🕒 17:00\n➡️ Genoa (Ita) vs L.R. Vicenza (Ita)",
+        "📅 Sabato 8 Agosto 2026\n🕒 14:00\n➡️ Genoa (Ita) vs A Coruna (Esp)",
+        "📅 Sabato 22 Agosto 2026\n🕒 20:45\n➡️ Genoa vs Napoli",
+        "📅 Venerdì 4 Settembre 2026\n🕒 20:45\n➡️ Genoa vs Como",
+        "📅 Sabato 12 Settembre 2026\n🕒 15:00\n➡️ Genoa vs Frosinone",
+        "📅 Domenica 11 Ottobre 2026\n🕒 18:30\n➡️ Genoa vs Fiorentina",
+        "📅 Domenica 25 Ottobre 2026\n🕒 18:30\n➡️ Genoa vs Venezia",
+        "📅 Mercoledì 28 Ottobre 2026\n🕒 18:30\n➡️ Genoa vs Juventus",
+        "📅 Domenica 8 Novembre 2026\n🕒 18:30\n➡️ Genoa vs Milan",
+        "📅 Domenica 6 Dicembre 2026\n🕒 18:30\n➡️ Genoa vs Torino",
+        "📅 Domenica 20 Dicembre 2026\n🕒 18:30\n➡️ Genoa vs Udinese",
+        "📅 Mercoledì 6 Gennaio 2027\n🕒 00:00\n➡️ Genoa vs Monza",
+        "📅 Domenica 24 Gennaio 2027\n🕒 00:00\n➡️ Genoa vs Parma",
+        "📅 Domenica 31 Gennaio 2027\n🕒 00:00\n➡️ Genoa vs Lecce",
+        "📅 Domenica 14 Febbraio 2027\n🕒 00:00\n➡️ Genoa vs Atalanta",
+        "📅 Domenica 28 Febbraio 2027\n🕒 00:00\n➡️ Genoa vs Lazio",
+        "📅 Domenica 14 Marzo 2027\n🕒 00:00\n➡️ Genoa vs Roma",
+        "📅 Domenica 4 Aprile 2027\n🕒 00:00\n➡️ Genoa vs Inter",
+        "📅 Domenica 25 Aprile 2027\n🕒 00:00\n➡️ Genoa vs Sassuolo",
+        "📅 Domenica 9 Maggio 2027\n🕒 00:00\n➡️ Genoa vs Cagliari",
+        "📅 Domenica 23 Maggio 2027\n🕒 00:00\n➡️ Genoa vs Bologna"
+    ],
+    "GENOA (PRIMAVERA)": [],
+    "SAMPDORIA (PRIMA SQUADRA)": [
+        "📅 Sabato 18 Luglio 2026\n🕒 17:00\n➡️ Sampdoria (Ita) vs Taverne (Sui)",
+        "📅 Giovedì 23 Luglio 2026\n🕒 17:00\n➡️ Sampdoria (Ita) vs Cagliari (Ita)"
+    ],
+    "SAMPDORIA (PRIMAVERA)": [],
+    "CELLE VARAZZE": [],
+    "IMPERIA": [],
+    "SESTRI LEVANTE": [],
+    "LIGORNA": [],
+    "DERTHONA BASKET": [],
+    "PRO RECCO": [],
+    "SC QUINTO": [],
+    "BOGLIASCO FEMMINILE": [],
+    "CDM FUTSAL GENOVA": [],
+    "RAPALLO PALLANUOTO FEMMINILE": [],
+    "RN SAVONA PALLANUOTO": [],
+    "ALESSANDRIA CALCIO": [],
+    "JUVENTUS U23": []
+}
