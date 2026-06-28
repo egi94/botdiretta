@@ -166,6 +166,10 @@ END:VCALENDAR
         f.write(ics_content)
     return filename
 
+# ============================================================
+# === SCRAPING PAGINA SQUADRA ================================
+# ============================================================
+
 async def extract_matches(url: str):
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
@@ -212,6 +216,36 @@ async def extract_matches(url: str):
         return matches
 
 # ============================================================
+# === SCRAPING PAGINA PARTITA SINGOLA ========================
+# ============================================================
+
+async def extract_single_match(url: str):
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(headless=True)
+        context = await browser.new_context(locale="it-IT", timezone_id="Europe/Rome")
+        page = await context.new_page()
+        await page.goto(url, timeout=60000, wait_until="networkidle")
+        await page.wait_for_timeout(2000)
+
+        # Squadra HOME
+        home = await page.inner_text("div.duelParticipant__home a.participant_participantName")
+
+        # Squadra AWAY
+        away = await page.inner_text("div.duelParticipant__away a.participant_participantName")
+
+        # Data + ora
+        datetime_raw = await page.inner_text("div.duelParticipant__startTime")
+        formatted_date, formatted_time = format_match_date(datetime_raw)
+
+        match_str = (
+            f"📅 {formatted_date}\n"
+            f"🕒 {formatted_time}\n"
+            f"➡️ {home} vs {away}"
+        )
+
+        return (home, away, match_str, url)
+
+# ============================================================
 # === COMANDO TELEGRAM /addmatch =============================
 # ============================================================
 
@@ -224,13 +258,24 @@ def get_updates():
         return []
 
 async def process_addmatch_command(link: str):
-    extracted = await extract_matches(link)
-    if not extracted:
-        send_telegram_message("❌ Nessuna partita trovata dal link fornito.")
-        return
 
-    team_official_norm, home, away, match_str, match_url = extracted[0]
+    # Pagina squadra
+    if "/squadra/" in link:
+        extracted = await extract_matches(link)
+        if not extracted:
+            send_telegram_message("❌ Nessuna partita trovata dal link squadra.")
+            return
+        team_official_norm, home, away, match_str, match_url = extracted[0]
 
+    # Pagina partita singola
+    else:
+        result = await extract_single_match(link)
+        if not result:
+            send_telegram_message("❌ Nessuna partita trovata dal link partita.")
+            return
+        home, away, match_str, match_url = result
+
+    # Estrazione data/ora
     lines = match_str.split("\n")
     new_date = lines[0].replace("📅", "").strip()
     new_time = lines[1].replace("🕒", "").strip()
@@ -403,7 +448,7 @@ async def main():
     riepilogo += f"Nuove partite trovate: {total_new_matches}\n"
     riepilogo += f"⏰ {timestamp_ita.strftime('%H:%M')} | {timestamp_ita.strftime('%A %d %B')}"
 
-    send_telegram_message(riepilogo)
+        send_telegram_message(riepilogo)
 
 if __name__ == "__main__":
     asyncio.run(main())
