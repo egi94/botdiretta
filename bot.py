@@ -6,17 +6,27 @@ import requests
 from dotenv import load_dotenv
 from datetime import datetime, timedelta
 
+# Carica il file .env
 load_dotenv()
+
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 TEAMS = json.loads(os.getenv("TEAMS", "{}"))
+
 MATCHES_FILE = "matches.json"
 
-ITALIAN_DAYS = ["Lunedì","Martedì","Mercoledì","Giovedì","Venerdì","Sabato","Domenica"]
-ITALIAN_MONTHS = ["Gennaio","Febbraio","Marzo","Aprile","Maggio","Giugno","Luglio","Agosto","Settembre","Ottobre","Novembre","Dicembre"]
+ITALIAN_DAYS = [
+    "Lunedì", "Martedì", "Mercoledì",
+    "Giovedì", "Venerdì", "Sabato", "Domenica"
+]
+
+ITALIAN_MONTHS = [
+    "Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno",
+    "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre"
+]
 
 def normalize(name: str):
-    return name.lower().replace("_"," ").strip()
+    return name.lower().replace("_", " ").strip()
 
 def format_match_date(raw_time: str):
     raw = raw_time.strip()
@@ -24,162 +34,254 @@ def format_match_date(raw_time: str):
         return raw, ""
     parts = raw.split()
     date_part = parts[0].rstrip(".")
-    bits = date_part.split(".")
-    if len(bits) < 2:
+    date_bits = date_part.split(".")
+    if len(date_bits) < 2:
         return raw, ""
-    d, m = bits[0], bits[1]
-    y = bits[2] if len(bits) == 3 else str(datetime.now().year)
-    t = parts[1] if len(parts) > 1 else "00:00"
+    d = date_bits[0]
+    m = date_bits[1]
+    if len(date_bits) >= 3:
+        year = date_bits[2]
+    else:
+        year = str(datetime.now().year)
+    time_part = parts[1] if len(parts) > 1 else "00:00"
     try:
-        dt = datetime.strptime(f"{d}.{m}.{y} {t}", "%d.%m.%Y %H:%M")
+        dt = datetime.strptime(f"{d}.{m}.{year} {time_part}", "%d.%m.%Y %H:%M")
     except:
-        return raw, t
-    return f"{ITALIAN_DAYS[dt.weekday()]} {dt.day} {ITALIAN_MONTHS[dt.month-1]} {dt.year}", dt.strftime("%H:%M")
+        return raw, time_part
+    day_name = ITALIAN_DAYS[dt.weekday()]
+    month_name = ITALIAN_MONTHS[dt.month - 1]
+    formatted_date = f"{day_name} {dt.day} {month_name} {dt.year}"
+    formatted_time = dt.strftime("%H:%M")
+    return formatted_date, formatted_time
 
 def get_sport_emoji(team_name: str):
-    n = team_name.lower()
-    if "basket" in n: return "🏀"
-    if any(x in n for x in ["pallanuoto","recco","quinto","bogliasco","savona","rapallo"]): return "🤽‍♂️"
-    if "futsal" in n: return "🥅"
+    name = team_name.lower()
+    if "basket" in name:
+        return "🏀"
+    if (
+        "pallanuoto" in name or
+        "recco" in name or
+        "quinto" in name or
+        "bogliasco" in name or
+        "savona" in name or
+        "rapallo" in name
+    ):
+        return "🤽‍♂️"
+    if "futsal" in name:
+        return "🥅"
     return "⚽"
 
 def send_telegram_message(text: str):
     if not TELEGRAM_TOKEN or not CHAT_ID:
+        print("⚠️ TELEGRAM_TOKEN o CHAT_ID mancanti, salto Telegram")
         return
-    requests.post(
-        f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage",
-        json={"chat_id":CHAT_ID,"text":text,"disable_web_page_preview":True,"parse_mode":"Markdown"}
-    )
+    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+    try:
+        r = requests.post(
+            url,
+            json={
+                "chat_id": CHAT_ID,
+                "text": text,
+                "disable_web_page_preview": True,
+                "parse_mode": "Markdown"
+            },
+            timeout=10
+        )
+        if r.status_code != 200:
+            print(f"⚠️ Errore Telegram: {r.status_code} - {r.text}")
+    except Exception as e:
+        print(f"⚠️ Eccezione Telegram: {e}")
 
-def send_ics_file(path):
-    with open(path,"rb") as f:
+def send_ics_file(file_path):
+    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendDocument"
+    with open(file_path, "rb") as f:
         requests.post(
-            f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendDocument",
-            data={"chat_id":CHAT_ID},
-            files={"document":f}
+            url,
+            data={"chat_id": CHAT_ID},
+            files={"document": f}
         )
 
 def load_matches():
-    if not os.path.exists(MATCHES_FILE): return {}
+    if not os.path.exists(MATCHES_FILE):
+        return {}
     try:
-        return json.load(open(MATCHES_FILE,"r",encoding="utf-8"))
-    except:
+        with open(MATCHES_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
         return {}
 
 def save_matches(data):
-    json.dump(data,open(MATCHES_FILE,"w",encoding="utf-8"),indent=4,ensure_ascii=False)
+    with open(MATCHES_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=4, ensure_ascii=False)
 
-def parse_italian_formatted_date(date_str: str, time_str: str):
+def parse_italian_formatted_date(date_str: str, time_str: str) -> datetime | None:
     try:
-        p = date_str.split()
-        day = int(p[1])
-        month = ITALIAN_MONTHS.index(p[2]) + 1
-        year = int(p[3])
-        tm = datetime.strptime(time_str,"%H:%M")
-        return datetime(year,month,day,tm.hour,tm.minute)
-    except:
+        parts = date_str.split()
+        if len(parts) < 4:
+            return None
+        day = int(parts[1])
+        month_name = parts[2]
+        year = int(parts[3])
+        if month_name not in ITALIAN_MONTHS:
+            return None
+        month = ITALIAN_MONTHS.index(month_name) + 1
+        dt = datetime.strptime(time_str, "%H:%M")
+        return datetime(year, month, day, dt.hour, dt.minute)
+    except Exception:
         return None
 
-def create_ics_event(home,away,date_str,time_str,url,is_waterpolo):
+def create_ics_event(home, away, date_str, time_str, url, is_waterpolo):
     prefix = "[N][RTS]" if is_waterpolo else "[N][SD]"
-    hu, au = home.upper(), away.upper()
-    dt = parse_italian_formatted_date(date_str,time_str)
-    if dt is None: return None
+
+    home_u = home.upper()
+    away_u = away.upper()
+
+    summary = f"{prefix} {home_u} {away_u}"
+
+    dt = parse_italian_formatted_date(date_str, time_str)
+    if dt is None:
+        return None
+
     dt_end = dt + timedelta(hours=2)
+
     dtstart = dt.strftime("%Y%m%dT%H%M%S")
     dtend = dt_end.strftime("%Y%m%dT%H%M%S")
+
     dtstamp = datetime.now().strftime("%Y%m%dT%H%M%S")
-    uid = f"{hu}-{au}-{dtstart}@diretta"
-    ics = f"""BEGIN:VCALENDAR
+
+    uid = f"{home_u}-{away_u}-{dtstart}@diretta"
+
+    ics_content = f"""BEGIN:VCALENDAR
 VERSION:2.0
 BEGIN:VEVENT
 UID:{uid}
 DTSTAMP:{dtstamp}
-SUMMARY:{prefix} {hu} {au}
+SUMMARY:{summary}
 DTSTART:{dtstart}
 DTEND:{dtend}
 DESCRIPTION:Link diretta: {url}
 END:VEVENT
 END:VCALENDAR
 """
-    fn = f"{hu}_{au}_{dt.strftime('%Y%m%dT%H%M')}.ics"
-    open(fn,"w",encoding="utf-8").write(ics)
-    return fn
+
+    filename = f"{home_u}_{away_u}_{dt.strftime('%Y%m%dT%H%M')}.ics"
+    with open(filename, "w", encoding="utf-8") as f:
+        f.write(ics_content)
+
+    return filename
 
 async def extract_matches(url: str):
     print(f"🔎 Carico pagina: {url}")
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True)
-        ctx = await browser.new_context(locale="it-IT",timezone_id="Europe/Rome")
-        page = await ctx.new_page()
-        await page.goto(url,timeout=60000,wait_until="networkidle")
+        browser = await p.chromium.launch(
+            headless=True,
+            args=[
+                "--disable-blink-features=AutomationControlled",
+                "--no-sandbox",
+                "--disable-dev-shm-usage"
+            ]
+        )
+        context = await browser.new_context(
+            user_agent=(
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/124.0.0.0 Safari/537.36"
+            ),
+            viewport={"width": 1366, "height": 768},
+            locale="it-IT",
+            timezone_id="Europe/Rome"
+        )
+        page = await context.new_page()
+        await page.goto(url, timeout=60000, wait_until="networkidle")
         await page.wait_for_timeout(2000)
 
-        team_name = (await page.inner_text("div.heading__name")).strip()
-        team_norm = normalize(team_name)
-        print(f"🏷️ Squadra: {team_name}")
+        team_official_name = await page.inner_text("div.heading__name")
+        team_official_name = team_official_name.strip()
+        team_official_norm = normalize(team_official_name)
+        print(f"🏷️ Nome ufficiale squadra: {team_official_name}")
 
         blocks = await page.query_selector_all("div[data-testid='wcl-MatchRow']")
-        if not blocks:
+        if len(blocks) == 0:
             blocks = await page.query_selector_all("div.event__match")
 
-        print(f"➡️ Trovati {len(blocks)} blocchi")
+        print(f"➡️ Trovati {len(blocks)} blocchi partita")
 
         matches = []
 
         for block in blocks:
+            # LAYOUT NUOVO (wcl-MatchRow / wcl-scores)
+            date_time_el = await block.query_selector("span.wcl-dateContent_eEChT")
+            participants = await block.query_selector_all("span.wcl-MatchRow__participantName")
 
-            # DATA
-            d_el = await block.query_selector("span.wcl-dateContent_eEchT")
-            raw_date = (await d_el.inner_text()).strip() if d_el else ""
+            if date_time_el and len(participants) >= 2:
+                raw_date_time = (await date_time_el.inner_text()).strip()
+                formatted_date, formatted_time = format_match_date(raw_date_time)
 
-            # ORA
-            t_el = await block.query_selector("span.wcl-timeContent_xxx") \
-                or await block.query_selector("span.wcl-scores-simple-text-01")
-            raw_time = (await t_el.inner_text()).strip() if t_el else ""
+                home = (await participants[0].inner_text()).strip()
+                away = (await participants[1].inner_text()).strip()
 
-            time_text = f"{raw_date} {raw_time}".strip()
+                link_el = await block.query_selector("a[href*='/partita/']")
+                href = await link_el.get_attribute("href") if link_el else None
+                match_url = "https://www.diretta.it" + href if href and href.startswith("/") else href
 
-            # SQUADRE
-            parts = await block.query_selector_all("span.wcl-MatchRow__participantName")
-            if len(parts) < 2:
+                match_str = (
+                    f"📅 {formatted_date}\n"
+                    f"🕒 {formatted_time}\n"
+                    f"➡️ {home} vs {away}\n"
+                    f"🔗 {match_url}"
+                )
+
+                matches.append((team_official_norm, home, away, match_str))
                 continue
 
-            home = (await parts[0].inner_text()).strip()
-            away = (await parts[1].inner_text()).strip()
+            # LAYOUT VECCHIO (event__match)
+            date_el = await block.query_selector("div.event__time--date")
+            time_el = await block.query_selector("div.event__time--time")
+            home_el = await block.query_selector("div.event__participant--home")
+            away_el = await block.query_selector("div.event__participant--away")
 
-            # LINK
-            link_el = await block.query_selector("a[href*='/partita/']")
-            href = await link_el.get_attribute("href") if link_el else None
-            match_url = "https://www.diretta.it"+href if href and href.startswith("/") else href
+            if date_el and time_el and home_el and away_el:
+                raw_date = (await date_el.inner_text()).strip()
+                raw_time = (await time_el.inner_text()).strip()
+                raw_date_time = f"{raw_date} {raw_time}"
+                formatted_date, formatted_time = format_match_date(raw_date_time)
 
-            fd, ft = format_match_date(time_text)
+                home = (await home_el.inner_text()).strip()
+                away = (await away_el.inner_text()).strip()
 
-            match_str = (
-                f"📅 {fd}\n"
-                f"🕒 {ft}\n"
-                f"➡️ {home} vs {away}\n"
-                f"🔗 {match_url}"
-            )
+                link_el = await block.query_selector("a[href*='/partita/']")
+                href = await link_el.get_attribute("href") if link_el else None
+                match_url = "https://www.diretta.it" + href if href and href.startswith("/") else href
 
-            matches.append((team_norm,home,away,match_str))
+                match_str = (
+                    f"📅 {formatted_date}\n"
+                    f"🕒 {formatted_time}\n"
+                    f"➡️ {home} vs {away}\n"
+                    f"🔗 {match_url}"
+                )
+
+                matches.append((team_official_norm, home, away, match_str))
+                continue
 
         await browser.close()
         return matches
 
 async def main():
-    print("🚀 Avvio bot Diretta.it")
+    print("🚀 Avvio bot Diretta.it (Locale)")
     stored = load_matches()
     updated = {}
-    total_new = 0
+    total_new_matches = 0
 
-    for team_name,url in TEAMS.items():
-        print(f"\n👀 Squadra: {team_name}")
+    for team_name, url in TEAMS.items():
+        print("\n==============================")
+        print(f"👀 Squadra: {team_name}")
+
         extracted = await extract_matches(url)
-        old_list = stored.get(team_name,[])
+        old_list = stored.get(team_name, [])
+
         new_list = []
 
-        for team_norm,home,away,match_str in extracted:
+        for team_official_norm, home, away, match_str in extracted:
             nt = normalize(team_name)
             if nt not in normalize(home) and nt not in normalize(away):
                 continue
@@ -187,60 +289,83 @@ async def main():
 
         for match_str in new_list:
             lines = match_str.split("\n")
-            new_date = lines[0].replace("📅","").strip()
-            new_time = lines[1].replace("🕒","").strip()
-            new_vs = lines[2].replace("➡️","").strip()
-            new_url = lines[3].replace("🔗","").strip()
+            new_date = lines[0].replace("📅", "").strip()
+            new_time = lines[1].replace("🕒", "").strip()
+            new_vs = lines[2].replace("➡️", "").strip()
+            new_url = lines[3].replace("🔗", "").strip()
 
-            old_match = None
+            old_match_found = None
             old_date = None
             old_time = None
 
             for old in old_list:
                 o_lines = old.split("\n")
-                o_date = o_lines[0].replace("📅","").strip()
-                o_time = o_lines[1].replace("🕒","").strip()
-                o_vs = o_lines[2].replace("➡️","").strip()
-                o_url = o_lines[3].replace("🔗","").strip()
+                o_date = o_lines[0].replace("📅", "").strip()
+                o_time = o_lines[1].replace("🕒", "").strip()
+                o_vs = o_lines[2].replace("➡️", "").strip()
+                o_url = o_lines[3].replace("🔗", "").strip()
+
                 if o_vs == new_vs and o_url == new_url:
-                    old_match = old
+                    old_match_found = old
                     old_date = o_date
                     old_time = o_time
                     break
 
             emoji = get_sport_emoji(team_name)
-            clean = team_name.upper()
+            clean_name = team_name.upper().strip()
 
-            if old_match is None:
-                total_new += 1
+            # NUOVA PARTITA
+            if old_match_found is None:
+                total_new_matches += 1
+
                 send_telegram_message(
-                    f"⚠️ NUOVA PARTITA TROVATA ⚠️\n\n"
-                    f"{emoji} {clean}\n"
+                    f"⚠️ ! NUOVA PARTITA TROVATA ! ⚠️\n\n"
+                    f"{emoji} Nuova partita: {clean_name}\n"
                     f"{match_str}"
                 )
-                home,away = new_vs.split(" vs ")
-                wp = (emoji=="🤽‍♂️")
-                fn = create_ics_event(home,away,new_date,new_time,new_url,wp)
-                if fn:
-                    send_ics_file(fn)
-                    os.remove(fn)
+
+                home, away = new_vs.split(" vs ")
+                is_waterpolo = (emoji == "🤽‍♂️")
+                ics_file = create_ics_event(home, away, new_date, new_time, new_url, is_waterpolo)
+                if ics_file:
+                    send_ics_file(ics_file)
+                    os.remove(ics_file)
+
                 continue
 
-            if old_date != new_date or old_time != new_time:
-                total_new += 1
-                send_telegram_message(
-                    f"⏰ VARIAZIONE ORARIO/DATA ⏰\n\n"
-                    f"{emoji} {clean}\n"
-                    f"{match_str}\n\n"
-                    f"Vecchia data: {old_date} → Nuova: {new_date}\n"
-                    f"Vecchio orario: {old_time} → Nuovo: {new_time}"
+            # VARIAZIONE ORARIO / DATA
+            date_changed = (old_date != new_date)
+            time_changed = (old_time != new_time)
+
+            if date_changed or time_changed:
+                total_new_matches += 1
+
+                date_msg = (
+                    f"La vecchia data era {old_date} mentre la NUOVA DATA è {new_date}!"
+                    if date_changed else
+                    f"La vecchia data era {old_date} mentre la NUOVA DATA è {new_date}! – NON VARIATA! –"
                 )
-                home,away = new_vs.split(" vs ")
-                wp = (emoji=="🤽‍♂️")
-                fn = create_ics_event(home,away,new_date,new_time,new_url,wp)
-                if fn:
-                    send_ics_file(fn)
-                    os.remove(fn)
+
+                time_msg = (
+                    f"Il vecchio orario era {old_time} mentre il NUOVO ORARIO è {new_time}!"
+                    if time_changed else
+                    f"Il vecchio orario era {old_time} mentre il NUOVO ORARIO è {new_time}! – NON VARIATA! –"
+                )
+
+                send_telegram_message(
+                    f"⏰ ! VARIAZIONE ORARIO/DATA - Nuovo orario/data! ⏰\n\n"
+                    f"{emoji} Squadra: {clean_name}\n"
+                    f"{match_str}\n\n"
+                    f"{time_msg}\n"
+                    f"{date_msg}"
+                )
+
+                home, away = new_vs.split(" vs ")
+                is_waterpolo = (emoji == "🤽‍♂️")
+                ics_file = create_ics_event(home, away, new_date, new_time, new_url, is_waterpolo)
+                if ics_file:
+                    send_ics_file(ics_file)
+                    os.remove(ics_file)
 
         updated[team_name] = new_list
 
