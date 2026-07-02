@@ -293,15 +293,7 @@ async def main():
         new_list = []
 
         for team_official_norm, home, away, match_str in extracted:
-            nt = normalize(team_name)
-
-            # PATCH UNIVERSALE più permissiva
-            if home == "" or away == "":
-                pass
-            else:
-                if nt not in normalize(home) and nt not in normalize(away):
-                    continue
-
+            # NESSUN FILTRO: salviamo tutte le partite estratte
             new_list.append(match_str)
 
         for match_str in new_list:
