@@ -195,6 +195,15 @@ async def extract_matches(url: str):
         await page.goto(url, timeout=60000, wait_until="networkidle")
         await page.wait_for_timeout(2000)
 
+        # Cookie banner (se presente)
+        try:
+            cookie_btn = await page.query_selector("button#onetrust-accept-btn-handler")
+            if cookie_btn:
+                await cookie_btn.click()
+                await page.wait_for_timeout(1500)
+        except:
+            pass
+
         team_official_name = await page.inner_text("div.heading__name")
         team_official_name = team_official_name.strip()
         team_official_norm = normalize(team_official_name)
@@ -210,8 +219,8 @@ async def extract_matches(url: str):
 
         for block in blocks:
             # LAYOUT NUOVO (wcl-MatchRow / wcl-scores)
-            date_time_el = await block.query_selector("span.wcl-dateContent_eEChT")
-            participants = await block.query_selector_all("span.wcl-MatchRow__participantName")
+            date_time_el = await block.query_selector("span[class*='wcl-dateContent']")
+            participants = await block.query_selector_all("span[class*='participantName']")
 
             if date_time_el and len(participants) >= 2:
                 raw_date_time = (await date_time_el.inner_text()).strip()
@@ -235,10 +244,12 @@ async def extract_matches(url: str):
                 continue
 
             # LAYOUT VECCHIO (event__match)
-            date_el = await block.query_selector("div.event__time--date")
-            time_el = await block.query_selector("div.event__time--time")
-            home_el = await block.query_selector("div.event__participant--home")
-            away_el = await block.query_selector("div.event__participant--away")
+            date_el = await block.query_selector("div.event__time--date") \
+                or await block.query_selector("span.event__time--date")
+            time_el = await block.query_selector("div.event__time--time") \
+                or await block.query_selector("span.event__time--time")
+            home_el = await block.query_selector("div[class*='participant'][class*='home']")
+            away_el = await block.query_selector("div[class*='participant'][class*='away']")
 
             if date_el and time_el and home_el and away_el:
                 raw_date = (await date_el.inner_text()).strip()
@@ -283,12 +294,21 @@ async def main():
 
         for team_official_norm, home, away, match_str in extracted:
             nt = normalize(team_name)
-            if nt not in normalize(home) and nt not in normalize(away):
-                continue
+
+            # PATCH UNIVERSALE più permissiva
+            if home == "" or away == "":
+                pass
+            else:
+                if nt not in normalize(home) and nt not in normalize(away):
+                    continue
+
             new_list.append(match_str)
 
         for match_str in new_list:
             lines = match_str.split("\n")
+            if len(lines) < 4:
+                continue
+
             new_date = lines[0].replace("📅", "").strip()
             new_time = lines[1].replace("🕒", "").strip()
             new_vs = lines[2].replace("➡️", "").strip()
@@ -300,6 +320,8 @@ async def main():
 
             for old in old_list:
                 o_lines = old.split("\n")
+                if len(o_lines) < 4:
+                    continue
                 o_date = o_lines[0].replace("📅", "").strip()
                 o_time = o_lines[1].replace("🕒", "").strip()
                 o_vs = o_lines[2].replace("➡️", "").strip()
@@ -371,6 +393,80 @@ async def main():
 
     save_matches(updated)
     print("✅ Fine esecuzione bot")
+
+    # === CALENDARIO 28 GIORNI ===
+    stored = load_matches()
+    today = datetime.now()
+    start_day = today.replace(hour=0, minute=0, second=0, microsecond=0)
+    end_day = start_day + timedelta(days=28)
+
+    days_list = []
+    for i in range(28):
+        days_list.append(start_day + timedelta(days=i))
+
+    matches_by_day = {d.date(): [] for d in days_list}
+
+    for team_name, matches in stored.items():
+        emoji = get_sport_emoji(team_name)
+        for match in matches:
+            lines = match.split("\n")
+            if len(lines) < 4:
+                continue
+            raw_date = lines[0].replace("📅", "").strip()
+            raw_time = lines[1].replace("🕒", "").strip()
+
+            dt = parse_italian_formatted_date(raw_date, raw_time)
+            if dt is None:
+                continue
+
+            if start_day <= dt < end_day:
+                matches_by_day[dt.date()].append((dt, team_name, emoji, match))
+
+    def format_italian_date(d: datetime) -> str:
+        day_name = ITALIAN_DAYS[d.weekday()]
+        month_name = ITALIAN_MONTHS[d.month - 1]
+        return f"{day_name} {d.day} {month_name} {d.year}"
+
+    start_str = format_italian_date(start_day)
+    end_str = format_italian_date(end_day - timedelta(days=1))
+
+    riepilogo = "📅 *Calendario partite prossimi 28 giorni:*\n\n"
+    riepilogo += f"🌏 Dal *{start_str}* al *{end_str}*\n\n"
+
+    for d in days_list:
+        day_key = d.date()
+        day_label = format_italian_date(d)
+
+        riepilogo += "───────────────────────────────\n"
+        riepilogo += f"📌 *{day_label}*\n"
+
+        day_matches = sorted(matches_by_day[day_key], key=lambda x: x[0])
+
+        if not day_matches:
+            riepilogo += "• Nessuna partita in calendario\n\n"
+            continue
+
+        riepilogo += "\n"
+        for dt, team_name, emoji, match in day_matches:
+            lines = match.split("\n")
+            time = lines[1].replace("🕒", "").strip()
+            vs = lines[2].replace("➡️", "").strip()
+            link = lines[3].replace("🔗", "").strip()
+
+            riepilogo += f"{emoji} *{team_name}*\n"
+            riepilogo += f"• {time} — {vs}\n"
+            riepilogo += f"  🔗 {link}\n\n"
+
+    timestamp_ita = datetime.now() + timedelta(hours=2)
+    ora = timestamp_ita.strftime("%H:%M")
+    giorno = timestamp_ita.strftime("%A %d %B")
+
+    riepilogo += "───────────────────────────────\n"
+    riepilogo += f"🔄 Scansione completata\n"
+    riepilogo += f"Nuove partite trovate: {total_new_matches}\n"
+    riepilogo += f"⏰ {ora} | {giorno}"
+
+    send_telegram_message(riepilogo)
 
 if __name__ == "__main__":
     asyncio.run(main())
