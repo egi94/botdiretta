@@ -220,14 +220,27 @@ async def extract_matches(url: str):
         for block in blocks:
             # LAYOUT NUOVO (wcl-MatchRow / wcl-scores)
             date_time_el = await block.query_selector("span[class*='wcl-dateContent']")
-            participants = await block.query_selector_all("span[class*='participantName']")
-
-            if date_time_el and len(participants) >= 2:
+            if date_time_el:
                 raw_date_time = (await date_time_el.inner_text()).strip()
                 formatted_date, formatted_time = format_match_date(raw_date_time)
 
-                home = (await participants[0].inner_text()).strip()
-                away = (await participants[1].inner_text()).strip()
+                # nuovi div nomi squadre
+                home_el = await block.query_selector(
+                    "div.event__homeParticipant span.wcl-name_jjfMf"
+                )
+                away_el = await block.query_selector(
+                    "div.event__awayParticipant span.wcl-name_jjfMf"
+                )
+
+                if not home_el or not away_el:
+                    names = await block.query_selector_all("span.wcl-name_jjfMf")
+                    if len(names) >= 1 and not home_el:
+                        home_el = names[0]
+                    if len(names) >= 2 and not away_el:
+                        away_el = names[1]
+
+                home = (await home_el.inner_text()).strip() if home_el else ""
+                away = (await away_el.inner_text()).strip() if away_el else ""
 
                 link_el = await block.query_selector("a[href*='/partita/']")
                 href = await link_el.get_attribute("href") if link_el else None
@@ -293,7 +306,7 @@ async def main():
         new_list = []
 
         for team_official_norm, home, away, match_str in extracted:
-            # NESSUN FILTRO: salviamo tutte le partite estratte
+            # nessun filtro: salviamo tutte le partite estratte
             new_list.append(match_str)
 
         for match_str in new_list:
