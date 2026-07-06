@@ -195,7 +195,6 @@ async def extract_matches(url: str):
         await page.goto(url, timeout=60000, wait_until="networkidle")
         await page.wait_for_timeout(2000)
 
-        # Cookie banner (se presente)
         try:
             cookie_btn = await page.query_selector("button#onetrust-accept-btn-handler")
             if cookie_btn:
@@ -308,7 +307,8 @@ async def main():
             vs_line = lines[2].replace("➡️", "").strip()
             home_team, away_team = vs_line.split(" vs ")
 
-            if normalize(home_team) != normalize(team_name):
+            # PATCH CORRETTA: confronto con team_official_norm
+            if normalize(home_team) != team_official_norm:
                 continue
             # -------------------------------------
 
