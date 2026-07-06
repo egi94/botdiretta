@@ -144,10 +144,10 @@ def create_ics_event(home, away, date_str, time_str, url, is_waterpolo):
 
     dt_end = dt + timedelta(hours=2)
 
-    dtstart = dt.strftime("%Y%m%dT%H:%M:%S")
-    dtend = dt_end.strftime("%Y%m%dT%H:%M:%S")
+    dtstart = dt.strftime("%Y%m%dT%H%M%S")
+    dtend = dt_end.strftime("%Y%m%dT%H%M%S")
 
-    dtstamp = datetime.now().strftime("%Y%m%dT%H:%M:%S")
+    dtstamp = datetime.now().strftime("%Y%m%dT%H%M%S")
 
     uid = f"{home_u}-{away_u}-{dtstart}@diretta"
 
@@ -195,6 +195,7 @@ async def extract_matches(url: str):
         await page.goto(url, timeout=60000, wait_until="networkidle")
         await page.wait_for_timeout(2000)
 
+        # Cookie banner (se presente)
         try:
             cookie_btn = await page.query_selector("button#onetrust-accept-btn-handler")
             if cookie_btn:
@@ -217,11 +218,13 @@ async def extract_matches(url: str):
         matches = []
 
         for block in blocks:
+            # LAYOUT NUOVO (wcl-MatchRow / wcl-scores)
             date_time_el = await block.query_selector("span[class*='wcl-dateContent']")
             if date_time_el:
                 raw_date_time = (await date_time_el.inner_text()).strip()
                 formatted_date, formatted_time = format_match_date(raw_date_time)
 
+                # nuovi div nomi squadre
                 home_el = await block.query_selector(
                     "div.event__homeParticipant span.wcl-name_jjfMf"
                 )
@@ -252,6 +255,7 @@ async def extract_matches(url: str):
 
                 matches.append((team_official_norm, home, away, match_str))
                 continue
+
             # LAYOUT VECCHIO (event__match)
             date_el = await block.query_selector("div.event__time--date") \
                 or await block.query_selector("span.event__time--date")
@@ -302,16 +306,7 @@ async def main():
         new_list = []
 
         for team_official_norm, home, away, match_str in extracted:
-            # --- FILTRO HOME BASATO SUL JSON ---
-            lines = match_str.split("\n")
-            vs_line = lines[2].replace("➡️", "").strip()
-            home_team, away_team = vs_line.split(" vs ")
-
-            # PATCH CORRETTA: confronto con team_official_norm
-            if normalize(home_team) != team_official_norm:
-                continue
-            # -------------------------------------
-
+            # nessun filtro: salviamo tutte le partite estratte
             new_list.append(match_str)
 
         for match_str in new_list:
@@ -464,9 +459,17 @@ async def main():
             link = lines[3].replace("🔗", "").strip()
 
             riepilogo += f"{emoji} *{team_name}*\n"
-            riepilogo += f"⏰ {time}\n"
-            riepilogo += f"⚽ {vs}\n"
-            riepilogo += f"🔗 {link}\n\n"
+            riepilogo += f"• {time} — {vs}\n"
+            riepilogo += f"  🔗 {link}\n\n"
+
+    timestamp_ita = datetime.now() + timedelta(hours=2)
+    ora = timestamp_ita.strftime("%H:%M")
+    giorno = timestamp_ita.strftime("%A %d %B")
+
+    riepilogo += "───────────────────────────────\n"
+    riepilogo += f"🔄 Scansione completata\n"
+    riepilogo += f"Nuove partite trovate: {total_new_matches}\n"
+    riepilogo += f"⏰ {ora} | {giorno}"
 
     send_telegram_message(riepilogo)
 
