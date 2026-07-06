@@ -144,10 +144,10 @@ def create_ics_event(home, away, date_str, time_str, url, is_waterpolo):
 
     dt_end = dt + timedelta(hours=2)
 
-    dtstart = dt.strftime("%Y%m%dT%H%M%S")
-    dtend = dt_end.strftime("%Y%m%dT%H%M%S")
+    dtstart = dt.strftime("%Y%m%dT%H:%M:%S")
+    dtend = dt_end.strftime("%Y%m%dT%H:%M:%S")
 
-    dtstamp = datetime.now().strftime("%Y%m%dT%H%M%S")
+    dtstamp = datetime.now().strftime("%Y%m%dT%H:%M:%S")
 
     uid = f"{home_u}-{away_u}-{dtstart}@diretta"
 
@@ -224,7 +224,6 @@ async def extract_matches(url: str):
                 raw_date_time = (await date_time_el.inner_text()).strip()
                 formatted_date, formatted_time = format_match_date(raw_date_time)
 
-                # nuovi div nomi squadre
                 home_el = await block.query_selector(
                     "div.event__homeParticipant span.wcl-name_jjfMf"
                 )
@@ -306,8 +305,16 @@ async def main():
         new_list = []
 
         for team_official_norm, home, away, match_str in extracted:
-            # nessun filtro: salviamo tutte le partite estratte
-            new_list.append(match_str)
+
+            # FILTRO: SOLO PARTITE IN CASA
+            team_norm = normalize(team_name)
+            home_norm = normalize(home)
+
+            if team_norm in home_norm:
+                new_list.append(match_str)
+                continue
+
+            continue
 
         for match_str in new_list:
             lines = match_str.split("\n")
