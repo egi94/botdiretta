@@ -273,56 +273,59 @@ async def main():
     save_matches(updated)
     print("✅ Fine esecuzione bot")
 
-    # === CALENDARIO 28 GIORNI ===
-    stored = load_matches()
-    today = datetime.now()
-    start_day = today.replace(hour=0, minute=0, second=0, microsecond=0)
-    end_day = start_day + timedelta(days=28)
-    days_list = [start_day + timedelta(days=i) for i in range(28)]
-    matches_by_day = {d.date(): [] for d in days_list}
+stored=load_matches()
+today=datetime.now()
+start_day=today.replace(hour=0,minute=0,second=0,microsecond=0)
+end_day=start_day+timedelta(days=28)
+days_list=[start_day+timedelta(days=i) for i in range(28)]
+matches_by_day={d.date():[] for d in days_list}
 
-    for team_name, matches in stored.items():
-        emoji = get_sport_emoji(team_name)
-        for match in matches:
-            lines = match.split("\n")
-            if len(lines) < 4: continue
-            dt = parse_italian_formatted_date(
-                lines[0].replace("📅", "").strip(),
-                lines[1].replace("🕒", "").strip()
-            )
-            if dt and start_day <= dt < end_day:
-                matches_by_day[dt.date()].append((dt, team_name, emoji, match))
+for team_name,matches in stored.items():
+    emoji=get_sport_emoji(team_name)
+    for match in matches:
+        lines=match.split("\n")
+        if len(lines)<4: continue
+        dt=parse_italian_formatted_date(lines[0].replace("📅","").strip(),lines[1].replace("🕒","").strip())
+        if dt and start_day<=dt<end_day:
+            matches_by_day[dt.date()].append((dt,team_name,emoji,match))
 
-    def format_italian_date(d): 
-        return f"{ITALIAN_DAYS[d.weekday()]} {d.day} {ITALIAN_MONTHS[d.month-1]} {d.year}"
+def format_italian_date(d):
+    return f"{ITALIAN_DAYS[d.weekday()]} {d.day} {ITALIAN_MONTHS[d.month-1]} {d.year}"
 
-    start_str = format_italian_date(start_day)
-    end_str = format_italian_date(end_day - timedelta(days=1))
+start_str=format_italian_date(start_day)
+end_str=format_italian_date(end_day-timedelta(days=1))
 
-    riepilogo = f"📅 *Calendario partite prossimi 28 giorni:*\n\n🌏 Dal *{start_str}* al *{end_str}*\n\n"
+riepilogo=f"🌏 Dal *{start_str}* al *{end_str}*\n\n"
+empty_start=None
 
-    for d in days_list:
-        day_key = d.date()
-        day_label = format_italian_date(d)
-        riepilogo += f"───────────────────────────────\n📌 *{day_label}*\n"
-        day_matches = sorted(matches_by_day[day_key], key=lambda x: x[0])
+for d in days_list:
+    k=d.date()
+    m=sorted(matches_by_day[k],key=lambda x:x[0])
+    if not m:
+        if empty_start is None: empty_start=d
+        continue
+    if empty_start:
+        e=d-timedelta(days=1)
+        riepilogo+=f"{empty_start.day}–{e.day} {ITALIAN_MONTHS[empty_start.month-1]} {empty_start.year}: Nessuna partita\n\n"
+        empty_start=None
+    lbl=format_italian_date(d)
+    riepilogo+=f"{lbl}:\n"
+    for _,team,emoji,match in m:
+        ln=match.split("\n")
+        t=ln[1].replace("🕒","").strip()
+        vs=ln[2].replace("➡️","").strip()
+        link=ln[3].replace("🔗","").strip()
+        riepilogo+=f"• {t} — {vs}\n  {link}\n"
+    riepilogo+="\n"
 
-        if not day_matches:
-            riepilogo += "• Nessuna partita in calendario\n\n"
-            continue
+if empty_start:
+    e=end_day-timedelta(days=1)
+    riepilogo+=f"{empty_start.day}–{e.day} {ITALIAN_MONTHS[empty_start.month-1]} {empty_start.year}: Nessuna partita\n\n"
 
-        riepilogo += "\n"
-        for _, team_name, emoji, match in day_matches:
-            lines = match.split("\n")
-            riepilogo += f"{emoji} *{team_name}*\n• {lines[1].replace('🕒','').strip()} — {lines[2].replace('➡️','').strip()}\n  🔗 {lines[3].replace('🔗','').strip()}\n\n"
+timestamp=datetime.now()+timedelta(hours=2)
+riepilogo+=f"🔄 Scansione completata\nNuove partite trovate: {total_new_matches}\n⏰ {timestamp.strftime('%H:%M')} | {timestamp.strftime('%A %d %B')}"
 
-    timestamp = datetime.now() + timedelta(hours=2)
-    riepilogo += "───────────────────────────────\n🔄 Scansione completata\n"
-    riepilogo += f"Nuove partite trovate: {total_new_matches}\n"
-    riepilogo += f"⏰ {timestamp.strftime('%H:%M')} | {timestamp.strftime('%A %d %B')}"
-
-    # PATCH: sostituzione della chiamata originale
-    send_long_message(riepilogo)
+send_long_message(riepilogo)
 
 if __name__ == "__main__":
     asyncio.run(main())
