@@ -320,7 +320,7 @@ for d in days_list:
 
 if empty_start:
     e=end_day-timedelta(days=1)
-    riepilogo+=f"{empty_start.day}–{e.day} {ITALIAN_MONTHS[empty_start.month-1]} {empty_start.year}: Nessuna partita\n\n"
+riepilogo += f"🔄 Scansione completata\nNuove partite trovate: {total_new_matches}\n⏰ {timestamp.strftime('%H:%M')} | {timestamp.strftime('%A %d %B')}"
 
 timestamp=datetime.now()+timedelta(hours=2)
 riepilogo+=f"🔄 Scansione completata\nNuove partite trovate: {total_new_matches}\n⏰ {timestamp.strftime('%H:%M')} | {timestamp.strftime('%A %d %B')}"
