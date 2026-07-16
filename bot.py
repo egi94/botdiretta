@@ -53,8 +53,7 @@ def send_telegram_message(text: str):
 
 def send_long_message(text: str, max_len=3500):
     if len(text) <= max_len:
-        send_telegram_message(text)
-        return
+        send_telegram_message(text); return
     for i in range(0, len(text), max_len):
         chunk = text[i:i+max_len]
         if i + max_len < len(text) and "\n" in chunk:
@@ -122,6 +121,24 @@ END:VCALENDAR
         f.write(ics_content)
     return filename
 
+def get_weather_data():
+    try:
+        url = "https://api.open-meteo.com/v1/forecast?latitude=44.407&longitude=8.934&daily=weathercode,temperature_2m_max,temperature_2m_min&timezone=Europe/Rome"
+        r = requests.get(url, timeout=10).json()
+        return r["daily"]["time"], r["daily"]["weathercode"], r["daily"]["temperature_2m_max"], r["daily"]["temperature_2m_min"]
+    except:
+        return [], [], [], []
+
+def weather_icon(code):
+    if code == 0: return "☀️"
+    if code in (1,2): return "⛅"
+    if code == 3: return "☁️"
+    if code in (45,48): return "🌫️"
+    if code in (51,53,55,61,63,65): return "🌧️"
+    if code in (71,73,75): return "❄️"
+    if code in (95,96,99): return "⛈️"
+    return "⛅"
+
 async def extract_matches(url: str):
     print(f"🔎 Carico pagina: {url}")
     async with async_playwright() as p:
@@ -136,7 +153,7 @@ async def extract_matches(url: str):
 
         try:
             cookie_btn = await page.query_selector("button#onetrust-accept-btn-handler")
-            if cookie_btn: 
+            if cookie_btn:
                 await cookie_btn.click()
                 await page.wait_for_timeout(1500)
         except: pass
@@ -166,7 +183,6 @@ async def extract_matches(url: str):
                 href = await link_el.get_attribute("href") if link_el else None
                 match_url = "https://www.diretta.it" + href if href and href.startswith("/") else href
 
-                # === FILTRO CASA (obbligatorio) ===
                 home_norm = normalize(home)
                 if team_official_norm not in home_norm:
                     continue
@@ -288,18 +304,49 @@ async def main():
 
     riepilogo = f"📅 *Calendario partite prossimi 28 giorni:*\n\n🌏 Dal *{start_str}* al *{end_str}*\n\n"
 
+    wx_dates, wx_codes, wx_max, wx_min = get_weather_data()
+    wx_map = {wx_dates[i]: (wx_codes[i], wx_max[i], wx_min[i]) for i in range(len(wx_dates))}
+
+    empty_start = None
+
     for d in days_list:
         day_key = d.date()
         day_label = format_italian_date(d)
-        riepilogo += f"───────────────────────────────\n📌 *{day_label}*\n"
         day_matches = sorted(matches_by_day[day_key], key=lambda x: x[0])
+
+        d_str = d.strftime("%Y-%m-%d")
+        if d_str in wx_map:
+            code, tmax, tmin = wx_map[d_str]
+            icon = weather_icon(code)
+            temp = f"{int(tmin)}°C / {int(tmax)}°C"
+        else:
+            icon = "⛅"
+            temp = "--°C / --°C"
+
         if not day_matches:
-            riepilogo += "• Nessuna partita in calendario\n\n"
+            if empty_start is None:
+                empty_start = d
             continue
-        riepilogo += "\n"
+
+        if empty_start:
+            end_empty = d - timedelta(days=1)
+            if empty_start == end_empty:
+                riepilogo += f"───────────────────────────────\n📌 *{format_italian_date(empty_start)}* ⛅ (Nessuna partita)\n\n"
+            else:
+                riepilogo += f"───────────────────────────────\n📌 *Dal {empty_start.day} al {end_empty.day} {ITALIAN_MONTHS[empty_start.month-1]} {empty_start.year}* ⛅ (Nessuna partita)\n\n"
+            empty_start = None
+
+        riepilogo += f"───────────────────────────────\n📌 *{day_label}* {icon} ({temp})\n\n"
         for _, team_name, emoji, match in day_matches:
             lines = match.split("\n")
             riepilogo += f"{emoji} *{team_name}*\n• {lines[1].replace('🕒','').strip()} — {lines[2].replace('➡️','').strip()}\n  🔗 {lines[3].replace('🔗','').strip()}\n\n"
+
+    if empty_start:
+        end_empty = end_day - timedelta(days=1)
+        if empty_start == end_empty:
+            riepilogo += f"───────────────────────────────\n📌 *{format_italian_date(empty_start)}* ⛅ (Nessuna partita)\n\n"
+        else:
+            riepilogo += f"───────────────────────────────\n📌 *Dal {empty_start.day} al {end_empty.day} {ITALIAN_MONTHS[empty_start.month-1]} {empty_start.year}* ⛅ (Nessuna partita)\n\n"
 
     timestamp = datetime.now() + timedelta(hours=2)
     riepilogo += "───────────────────────────────\n🔄 Scansione completata\n"
