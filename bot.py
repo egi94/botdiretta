@@ -129,15 +129,32 @@ def get_weather_data():
     except:
         return [], [], [], []
 
-def weather_icon(code):
-    if code == 0: return "☀️"
-    if code in (1,2): return "⛅"
-    if code == 3: return "☁️"
-    if code in (45,48): return "🌫️"
-    if code in (51,53,55,61,63,65): return "🌧️"
-    if code in (71,73,75): return "❄️"
-    if code in (95,96,99): return "⛈️"
-    return "⛅"
+def weather_description(code):
+    mapping = {
+        0: "Cielo sereno",
+        1: "Prevalentemente sereno",
+        2: "Parzialmente nuvoloso",
+        3: "Coperto",
+        45: "Nebbia",
+        48: "Nebbia con brina",
+        51: "Pioviggine leggera",
+        53: "Pioviggine moderata",
+        55: "Pioviggine intensa",
+        61: "Pioggia leggera",
+        63: "Pioggia moderata",
+        65: "Pioggia intensa",
+        71: "Neve leggera",
+        73: "Neve moderata",
+        75: "Neve intensa",
+        77: "Granelli di neve",
+        80: "Rovesci leggeri",
+        81: "Rovesci moderati",
+        82: "Rovesci violenti",
+        95: "Temporale",
+        96: "Temporale con grandine",
+        99: "Temporale con grandine intensa"
+    }
+    return mapping.get(code, "Condizioni variabili")
 
 async def extract_matches(url: str):
     print(f"🔎 Carico pagina: {url}")
@@ -216,6 +233,73 @@ async def extract_matches(url: str):
         await browser.close()
         return matches
 
+async def add_match_manually(link: str):
+    print("🟦 Comando /addmatch ricevuto")
+    print(f"🔗 Link: {link}")
+    print("🟦 Avvio estrazione partita manuale...")
+
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(headless=True, args=[
+            "--disable-blink-features=AutomationControlled", "--no-sandbox", "--disable-dev-shm-usage"])
+        context = await browser.new_context(
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+            viewport={"width": 1366, "height": 768}, locale="it-IT", timezone_id="Europe/Rome")
+        page = await context.new_page()
+        await page.goto(link, timeout=60000, wait_until="networkidle")
+        await page.wait_for_timeout(3000)
+
+        time_el = await page.query_selector("div.duelParticipant__startTime div")
+        home_el = await page.query_selector("div.duelParticipant__home a.participant__participantName")
+        away_el = await page.query_selector("div.duelParticipant__away a.participant__participantName")
+
+        raw_time = (await time_el.inner_text()).strip() if time_el else ""
+        home = (await home_el.inner_text()).strip() if home_el else ""
+        away = (await away_el.inner_text()).strip() if away_el else ""
+
+        formatted_date, formatted_time = format_match_date(raw_time)
+        match_str = f"📅 {formatted_date}\n🕒 {formatted_time}\n➡️ {home} vs {away}\n🔗 {link}"
+
+        # Salvataggio nel database (chiave = squadra di casa)
+        stored = load_matches()
+        home_norm = normalize(home)
+        if home_norm not in stored:
+            stored[home_norm] = []
+        if match_str not in stored[home_norm]:
+            stored[home_norm].append(match_str)
+        save_matches(stored)
+        print("🟩 Partita aggiunta al database")
+
+        # Genera e invia ICS
+        emoji = get_sport_emoji(home_norm)
+        is_waterpolo = (emoji == "🤽‍♂️")
+        ics_file = create_ics_event(home, away, formatted_date, formatted_time, link, is_waterpolo)
+        if ics_file:
+            send_ics_file(ics_file)
+            os.remove(ics_file)
+            print("🟩 ICS generato e inviato")
+
+        send_telegram_message(f"⚠️ ! NUOVA PARTITA AGGIUNTA MANUALMENTE ! ⚠️\n\n{match_str}")
+
+        await browser.close()
+
+async def listen_for_commands():
+    print("👂 Bot in ascolto per comandi Telegram (/addmatch)...")
+    offset = 0
+    while True:
+        try:
+            url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/getUpdates?offset={offset}&timeout=30"
+            resp = requests.get(url, timeout=35).json()
+            for update in resp.get("result", []):
+                offset = update["update_id"] + 1
+                if "message" in update and "text" in update["message"]:
+                    text = update["message"]["text"].strip()
+                    if text.startswith("/addmatch "):
+                        link = text.split(maxsplit=1)[1].strip()
+                        await add_match_manually(link)
+        except Exception as e:
+            print(f"⚠️ Errore polling Telegram: {e}")
+        await asyncio.sleep(3)
+
 async def main():
     print("🚀 Avvio bot Diretta.it (Locale)")
     stored = load_matches()
@@ -263,8 +347,8 @@ async def main():
 
             if old_date != new_date or old_time != new_time:
                 total_new_matches += 1
-                date_msg = f"La vecchia data era {old_date} mentre la NUOVA DATA è {new_date}!" if old_date != new_date else f"La vecchia data era {old_date} mentre la NUOVA DATA è {new_date}! – NON VARIATA! –"
-                time_msg = f"Il vecchio orario era {old_time} mentre il NUOVO ORARIO è {new_time}!" if old_time != new_time else f"Il vecchio orario era {old_time} mentre il NUOVO ORARIO è {new_time}! – NON VARIATA! –"
+                date_msg = f"La vecchia data era {old_date} mentre la NUOVA DATA è {new_date}!" if old_date != new_date else ""
+                time_msg = f"Il vecchio orario era {old_time} mentre il NUOVO ORARIO è {new_time}!" if old_time != new_time else ""
                 send_telegram_message(f"⏰ ! VARIAZIONE ORARIO/DATA - Nuovo orario/data! ⏰\n\n{emoji} Squadra: {clean_name}\n{match_str}\n\n{time_msg}\n{date_msg}")
                 home, away = new_vs.split(" vs ")
                 is_waterpolo = (emoji == "🤽‍♂️")
@@ -276,8 +360,9 @@ async def main():
         updated[team_name] = new_list
 
     save_matches(updated)
-    print("✅ Fine esecuzione bot")
+    print("✅ Fine esecuzione scraping")
 
+    # ==================== RIEPILOGO 28 GIORNI (METEO SOSTITUITO) ====================
     stored = load_matches()
     today = datetime.now()
     start_day = today.replace(hour=0, minute=0, second=0, microsecond=0)
@@ -317,11 +402,11 @@ async def main():
         d_str = d.strftime("%Y-%m-%d")
         if d_str in wx_map:
             code, tmax, tmin = wx_map[d_str]
-            icon = weather_icon(code)
-            temp = f"{int(tmin)}°C / {int(tmax)}°C"
+            desc = weather_description(code)
+            tavg = round((tmin + tmax) / 2)
+            meteo_str = f"{desc} / {tavg}°"
         else:
-            icon = "⛅"
-            temp = "--°C / --°C"
+            meteo_str = "Condizioni variabili / --°"
 
         if not day_matches:
             if empty_start is None:
@@ -331,12 +416,12 @@ async def main():
         if empty_start:
             end_empty = d - timedelta(days=1)
             if empty_start == end_empty:
-                riepilogo += f"───────────────────────────────\n📌 *{format_italian_date(empty_start)}* ⛅ (Nessuna partita)\n\n"
+                riepilogo += f"───────────────────────────────\n📌 *{format_italian_date(empty_start)}* (Nessuna partita)\n\n"
             else:
-                riepilogo += f"───────────────────────────────\n📌 *Dal {empty_start.day} al {end_empty.day} {ITALIAN_MONTHS[empty_start.month-1]} {empty_start.year}* ⛅ (Nessuna partita)\n\n"
+                riepilogo += f"───────────────────────────────\n📌 *Dal {empty_start.day} al {end_empty.day} {ITALIAN_MONTHS[empty_start.month-1]} {empty_start.year}* (Nessuna partita)\n\n"
             empty_start = None
 
-        riepilogo += f"───────────────────────────────\n📌 *{day_label}* {icon} ({temp})\n\n"
+        riepilogo += f"───────────────────────────────\n📌 *{day_label}* ({meteo_str})\n\n"
         for _, team_name, emoji, match in day_matches:
             lines = match.split("\n")
             riepilogo += f"{emoji} *{team_name}*\n• {lines[1].replace('🕒','').strip()} — {lines[2].replace('➡️','').strip()}\n  🔗 {lines[3].replace('🔗','').strip()}\n\n"
@@ -344,9 +429,9 @@ async def main():
     if empty_start:
         end_empty = end_day - timedelta(days=1)
         if empty_start == end_empty:
-            riepilogo += f"───────────────────────────────\n📌 *{format_italian_date(empty_start)}* ⛅ (Nessuna partita)\n\n"
+            riepilogo += f"───────────────────────────────\n📌 *{format_italian_date(empty_start)}* (Nessuna partita)\n\n"
         else:
-            riepilogo += f"───────────────────────────────\n📌 *Dal {empty_start.day} al {end_empty.day} {ITALIAN_MONTHS[empty_start.month-1]} {empty_start.year}* ⛅ (Nessuna partita)\n\n"
+            riepilogo += f"───────────────────────────────\n📌 *Dal {empty_start.day} al {end_empty.day} {ITALIAN_MONTHS[empty_start.month-1]} {empty_start.year}* (Nessuna partita)\n\n"
 
     timestamp = datetime.now() + timedelta(hours=2)
     riepilogo += "───────────────────────────────\n🔄 Scansione completata\n"
@@ -356,4 +441,5 @@ async def main():
     send_long_message(riepilogo)
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    asyncio.run(main())           # Esegue lo scraping + riepilogo
+    asyncio.run(listen_for_commands())  # Rimane in ascolto per /addmatch
