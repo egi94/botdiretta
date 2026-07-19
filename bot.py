@@ -1,4 +1,4 @@
-import os, json, asyncio, requests
+import os, json, asyncio, requests, time
 from playwright.async_api import async_playwright
 from dotenv import load_dotenv
 from datetime import datetime, timedelta
@@ -37,23 +37,33 @@ def get_sport_emoji(team_name: str):
     if "futsal" in name: return "🥅"
     return "⚽"
 
-def send_telegram_message(text: str):
+def send_telegram_message(text: str, schedule_date=None):
     if not TELEGRAM_TOKEN or not CHAT_ID:
-        print("⚠️ TELEGRAM_TOKEN o CHAT_ID mancanti"); return
+        print("⚠️ TELEGRAM_TOKEN o CHAT_ID mancanti"); return None
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+    payload = {
+        "chat_id": CHAT_ID,
+        "text": text,
+        "disable_web_page_preview": True,
+        "parse_mode": "Markdown"
+    }
+    if schedule_date:
+        payload["schedule_date"] = int(schedule_date.timestamp())
     try:
-        r = requests.post(url, json={
-            "chat_id": CHAT_ID, "text": text,
-            "disable_web_page_preview": True, "parse_mode": "Markdown"
-        }, timeout=10)
-        if r.status_code != 200:
+        r = requests.post(url, json=payload, timeout=10)
+        if r.status_code == 200:
+            return r.json().get("result", {}).get("message_id")
+        else:
             print(f"⚠️ Errore Telegram: {r.status_code} - {r.text}")
+            return None
     except Exception as e:
         print(f"⚠️ Eccezione Telegram: {e}")
+        return None
 
 def send_long_message(text: str, max_len=3500):
     if len(text) <= max_len:
-        send_telegram_message(text); return
+        send_telegram_message(text)
+        return
     for i in range(0, len(text), max_len):
         chunk = text[i:i+max_len]
         if i + max_len < len(text) and "\n" in chunk:
@@ -69,11 +79,17 @@ def send_ics_file(file_path):
         requests.post(url, data={"chat_id": CHAT_ID}, files={"document": f})
 
 def load_matches():
-    if not os.path.exists(MATCHES_FILE): return {}
+    if not os.path.exists(MATCHES_FILE): 
+        return {"matches": {}, "manual": {}, "blacklist": []}
     try:
         with open(MATCHES_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except: return {}
+            data = json.load(f)
+            if isinstance(data, dict) and "matches" in data:
+                return data
+            else:
+                return {"matches": data, "manual": {}, "blacklist": []}
+    except: 
+        return {"matches": {}, "manual": {}, "blacklist": []}
 
 def save_matches(data):
     with open(MATCHES_FILE, "w", encoding="utf-8") as f:
@@ -121,6 +137,21 @@ END:VCALENDAR
         f.write(ics_content)
     return filename
 
+def get_match_key(match_str: str):
+    try:
+        lines = match_str.split("\n")
+        if len(lines) >= 4:
+            return lines[3].replace("🔗", "").strip()
+    except: pass
+    return ""
+
+def schedule_one_hour_alert(match_str: str, match_dt: datetime):
+    alert_time = match_dt - timedelta(hours=1)
+    if alert_time <= datetime.now():
+        return None
+    text = f"⏰ **La partita inizierà tra 1 ora!**\n\n{match_str}"
+    return send_telegram_message(text, schedule_date=alert_time)
+
 def get_weather_data():
     try:
         url = "https://api.open-meteo.com/v1/forecast?latitude=44.407&longitude=8.934&daily=weathercode,temperature_2m_max,temperature_2m_min&timezone=Europe/Rome"
@@ -130,40 +161,17 @@ def get_weather_data():
         return [], [], [], []
 
 def weather_description(code):
-    mapping = {
-        0: "Cielo sereno",
-        1: "Prevalentemente sereno",
-        2: "Parzialmente nuvoloso",
-        3: "Coperto",
-        45: "Nebbia",
-        48: "Nebbia con brina",
-        51: "Pioviggine leggera",
-        53: "Pioviggine moderata",
-        55: "Pioviggine intensa",
-        61: "Pioggia leggera",
-        63: "Pioggia moderata",
-        65: "Pioggia intensa",
-        71: "Neve leggera",
-        73: "Neve moderata",
-        75: "Neve intensa",
-        77: "Granelli di neve",
-        80: "Rovesci leggeri",
-        81: "Rovesci moderati",
-        82: "Rovesci violenti",
-        95: "Temporale",
-        96: "Temporale con grandine",
-        99: "Temporale con grandine intensa"
-    }
+    mapping = {0:"Cielo sereno",1:"Prevalentemente sereno",2:"Parzialmente nuvoloso",3:"Coperto",45:"Nebbia",48:"Nebbia con brina",
+               51:"Pioviggine leggera",53:"Pioviggine moderata",55:"Pioviggine intensa",61:"Pioggia leggera",63:"Pioggia moderata",
+               65:"Pioggia intensa",71:"Neve leggera",73:"Neve moderata",75:"Neve intensa",77:"Granelli di neve",80:"Rovesci leggeri",
+               81:"Rovesci moderati",82:"Rovesci violenti",95:"Temporale",96:"Temporale con grandine",99:"Temporale con grandine intensa"}
     return mapping.get(code, "Condizioni variabili")
 
 async def extract_matches(url: str):
     print(f"🔎 Carico pagina: {url}")
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True, args=[
-            "--disable-blink-features=AutomationControlled", "--no-sandbox", "--disable-dev-shm-usage"])
-        context = await browser.new_context(
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-            viewport={"width": 1366, "height": 768}, locale="it-IT", timezone_id="Europe/Rome")
+        browser = await p.chromium.launch(headless=True, args=["--disable-blink-features=AutomationControlled", "--no-sandbox", "--disable-dev-shm-usage"])
+        context = await browser.new_context(user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36", viewport={"width": 1366, "height": 768}, locale="it-IT", timezone_id="Europe/Rome")
         page = await context.new_page()
         await page.goto(url, timeout=60000, wait_until="networkidle")
         await page.wait_for_timeout(2000)
@@ -201,13 +209,13 @@ async def extract_matches(url: str):
                 match_url = "https://www.diretta.it" + href if href and href.startswith("/") else href
 
                 home_norm = normalize(home)
-                if team_official_norm not in home_norm:
-                    continue
+                if team_official_norm not in home_norm: continue
 
                 match_str = f"📅 {formatted_date}\n🕒 {formatted_time}\n➡️ {home} vs {away}\n🔗 {match_url}"
                 matches.append((team_official_norm, home, away, match_str))
                 continue
 
+            # Vecchio layout (mantenuto)
             date_el = await block.query_selector("div.event__time--date") or await block.query_selector("span.event__time--date")
             time_el = await block.query_selector("div.event__time--time") or await block.query_selector("span.event__time--time")
             home_el = await block.query_selector("div[class*='participant'][class*='home']")
@@ -224,8 +232,7 @@ async def extract_matches(url: str):
                 match_url = "https://www.diretta.it" + href if href and href.startswith("/") else href
 
                 home_norm = normalize(home)
-                if team_official_norm not in home_norm:
-                    continue
+                if team_official_norm not in home_norm: continue
 
                 match_str = f"📅 {formatted_date}\n🕒 {formatted_time}\n➡️ {home} vs {away}\n🔗 {match_url}"
                 matches.append((team_official_norm, home, away, match_str))
@@ -235,15 +242,9 @@ async def extract_matches(url: str):
 
 async def add_match_manually(link: str):
     print("🟦 Comando /addmatch ricevuto")
-    print(f"🔗 Link: {link}")
-    print("🟦 Avvio estrazione partita manuale...")
-
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True, args=[
-            "--disable-blink-features=AutomationControlled", "--no-sandbox", "--disable-dev-shm-usage"])
-        context = await browser.new_context(
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-            viewport={"width": 1366, "height": 768}, locale="it-IT", timezone_id="Europe/Rome")
+        browser = await p.chromium.launch(headless=True, args=["--disable-blink-features=AutomationControlled", "--no-sandbox", "--disable-dev-shm-usage"])
+        context = await browser.new_context(user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36", viewport={"width": 1366, "height": 768}, locale="it-IT", timezone_id="Europe/Rome")
         page = await context.new_page()
         await page.goto(link, timeout=60000, wait_until="networkidle")
         await page.wait_for_timeout(3000)
@@ -259,31 +260,62 @@ async def add_match_manually(link: str):
         formatted_date, formatted_time = format_match_date(raw_time)
         match_str = f"📅 {formatted_date}\n🕒 {formatted_time}\n➡️ {home} vs {away}\n🔗 {link}"
 
-        # Salvataggio nel database (chiave = squadra di casa)
-        stored = load_matches()
+        data = load_matches()
         home_norm = normalize(home)
-        if home_norm not in stored:
-            stored[home_norm] = []
-        if match_str not in stored[home_norm]:
-            stored[home_norm].append(match_str)
-        save_matches(stored)
-        print("🟩 Partita aggiunta al database")
 
-        # Genera e invia ICS
-        emoji = get_sport_emoji(home_norm)
-        is_waterpolo = (emoji == "🤽‍♂️")
-        ics_file = create_ics_event(home, away, formatted_date, formatted_time, link, is_waterpolo)
-        if ics_file:
-            send_ics_file(ics_file)
-            os.remove(ics_file)
-            print("🟩 ICS generato e inviato")
+        if home_norm not in data["manual"]:
+            data["manual"][home_norm] = []
+        if match_str not in data["manual"][home_norm]:
+            data["manual"][home_norm].append(match_str)
+            save_matches(data)
+            print("🟩 Partita manuale salvata permanentemente")
 
-        send_telegram_message(f"⚠️ ! NUOVA PARTITA AGGIUNTA MANUALMENTE ! ⚠️\n\n{match_str}")
+            emoji = get_sport_emoji(home_norm)
+            is_waterpolo = (emoji == "🤽‍♂️")
+            ics_file = create_ics_event(home, away, formatted_date, formatted_time, link, is_waterpolo)
+            if ics_file:
+                send_ics_file(ics_file)
+                os.remove(ics_file)
+
+            dt = parse_italian_formatted_date(formatted_date, formatted_time)
+            if dt:
+                schedule_one_hour_alert(match_str, dt)
+
+            send_telegram_message(f"⚠️ ! NUOVA PARTITA AGGIUNTA MANUALMENTE ! ⚠️\n\n{match_str}")
 
         await browser.close()
 
+async def remove_match_manually(link: str):
+    print(f"🟥 Comando /removematch ricevuto per: {link}")
+    data = load_matches()
+    found = False
+    match_to_remove = None
+
+    for cat in ["matches", "manual"]:
+        for team, matches in list(data.get(cat, {}).items()):
+            for m in matches[:]:
+                if get_match_key(m) == link.strip():
+                    match_to_remove = m
+                    data[cat][team].remove(m)
+                    if not data[cat][team]:
+                        del data[cat][team]
+                    found = True
+                    break
+            if found: break
+        if found: break
+
+    if not found:
+        send_telegram_message("❌ Partita non trovata.")
+        return
+
+    if link not in data["blacklist"]:
+        data["blacklist"].append(link)
+
+    save_matches(data)
+    send_telegram_message(f"❌ Partita rimossa e aggiunta alla blacklist:\n\n{match_to_remove}")
+
 async def listen_for_commands():
-    print("👂 Bot in ascolto per comandi Telegram (/addmatch)...")
+    print("👂 Bot in ascolto per comandi Telegram (/addmatch, /removematch)...")
     offset = 0
     while True:
         try:
@@ -296,13 +328,19 @@ async def listen_for_commands():
                     if text.startswith("/addmatch "):
                         link = text.split(maxsplit=1)[1].strip()
                         await add_match_manually(link)
+                    elif text.startswith("/removematch "):
+                        link = text.split(maxsplit=1)[1].strip()
+                        await remove_match_manually(link)
         except Exception as e:
             print(f"⚠️ Errore polling Telegram: {e}")
         await asyncio.sleep(3)
 
 async def main():
     print("🚀 Avvio bot Diretta.it (Locale)")
-    stored = load_matches()
+    data = load_matches()
+    stored = data.get("matches", {})
+    manual = data.get("manual", {})
+    blacklist = data.get("blacklist", [])
     updated = {}
     total_new_matches = 0
 
@@ -310,8 +348,9 @@ async def main():
         print("\n==============================")
         print(f"👀 Squadra: {team_name}")
         extracted = await extract_matches(url)
-        old_list = stored.get(team_name, [])
-        new_list = [match_str for _, _, _, match_str in extracted]
+        old_list = stored.get(team_name, []) + manual.get(team_name, [])
+        new_list = [match_str for _, _, _, match_str in extracted 
+                   if get_match_key(match_str) not in blacklist]
 
         for match_str in new_list:
             lines = match_str.split("\n")
@@ -343,6 +382,11 @@ async def main():
                 if ics_file:
                     send_ics_file(ics_file)
                     os.remove(ics_file)
+
+                dt = parse_italian_formatted_date(new_date, new_time)
+                if dt:
+                    schedule_one_hour_alert(match_str, dt)
+
                 continue
 
             if old_date != new_date or old_time != new_time:
@@ -357,22 +401,35 @@ async def main():
                     send_ics_file(ics_file)
                     os.remove(ics_file)
 
+                dt = parse_italian_formatted_date(new_date, new_time)
+                if dt:
+                    schedule_one_hour_alert(match_str, dt)
+
         updated[team_name] = new_list
 
-    save_matches(updated)
+    # Merge manuali + scraping (senza duplicati e blacklist)
+    final_data = {"matches": updated, "manual": manual, "blacklist": blacklist}
+    save_matches(final_data)
     print("✅ Fine esecuzione scraping")
 
-    # ==================== RIEPILOGO 28 GIORNI (METEO SOSTITUITO) ====================
-    stored = load_matches()
+    # ==================== RIEPILOGO 28 GIORNI ====================
+    data = load_matches()
+    all_matches = {}
+    for cat in ["matches", "manual"]:
+        for team, matches in data.get(cat, {}).items():
+            all_matches.setdefault(team, []).extend(matches)
+
     today = datetime.now()
     start_day = today.replace(hour=0, minute=0, second=0, microsecond=0)
     end_day = start_day + timedelta(days=28)
     days_list = [start_day + timedelta(days=i) for i in range(28)]
     matches_by_day = {d.date(): [] for d in days_list}
+    blacklist = data.get("blacklist", [])
 
-    for team_name, matches in stored.items():
+    for team_name, matches in all_matches.items():
         emoji = get_sport_emoji(team_name)
         for match in matches:
+            if get_match_key(match) in blacklist: continue
             lines = match.split("\n")
             if len(lines) < 4: continue
             dt = parse_italian_formatted_date(
@@ -393,24 +450,21 @@ async def main():
     wx_map = {wx_dates[i]: (wx_codes[i], wx_max[i], wx_min[i]) for i in range(len(wx_dates))}
 
     empty_start = None
-
     for d in days_list:
         day_key = d.date()
         day_label = format_italian_date(d)
         day_matches = sorted(matches_by_day[day_key], key=lambda x: x[0])
 
         d_str = d.strftime("%Y-%m-%d")
+        meteo_str = "Condizioni variabili / --°"
         if d_str in wx_map:
             code, tmax, tmin = wx_map[d_str]
             desc = weather_description(code)
             tavg = round((tmin + tmax) / 2)
             meteo_str = f"{desc} / {tavg}°"
-        else:
-            meteo_str = "Condizioni variabili / --°"
 
         if not day_matches:
-            if empty_start is None:
-                empty_start = d
+            if empty_start is None: empty_start = d
             continue
 
         if empty_start:
@@ -441,5 +495,5 @@ async def main():
     send_long_message(riepilogo)
 
 if __name__ == "__main__":
-    asyncio.run(main())           # Esegue lo scraping + riepilogo
-    asyncio.run(listen_for_commands())  # Rimane in ascolto per /addmatch
+    asyncio.run(main())
+    asyncio.run(listen_for_commands())
