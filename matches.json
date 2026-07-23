@@ -96,8 +96,9 @@
         "JUVENTUS U23": []
     },
     "manual": [
-        "📅 Giovedì 23 Luglio 2026\n🕒 18:00\n➡️ Qarabag (AZE) vs CSKA Sofia (BUL)\n🔗 https://www.diretta.it/partita/calcio/cska-sofia-0xFNNECi/qarabag-agdam-Qgd3eSin/?mid=IibkzKD6",
         "📅 Domenica 2 Agosto 2026\n🕒 12:30\n➡️ Jeonnam vs Paju Frontier\n🔗 https://www.diretta.it/partita/calcio/jeonnam-EuIMj4XB/paju-frontier-IiA85488/?mid=bVpxGWBj"
     ],
-    "blacklist": []
+    "blacklist": [
+        "https://www.diretta.it/partita/calcio/cska-sofia-0xFNNECi/qarabag-agdam-Qgd3eSin/?mid=IibkzKD6"
+    ]
 }
