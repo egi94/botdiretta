@@ -69,11 +69,22 @@ def send_ics_file(file_path):
         requests.post(url, data={"chat_id": CHAT_ID}, files={"document": f})
 
 def load_matches():
-    if not os.path.exists(MATCHES_FILE): return {}
+    if not os.path.exists(MATCHES_FILE):
+        return {"matches": {}, "manual": [], "blacklist": []}
     try:
         with open(MATCHES_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except: return {}
+            data = json.load(f)
+            if isinstance(data, dict) and "matches" in data and isinstance(data.get("manual"), list):
+                return data
+            # Conversione automatica dal formato vecchio
+            if isinstance(data, dict) and not isinstance(data.get("manual"), list):
+                converted = {"matches": data, "manual": [], "blacklist": []}
+                save_matches(converted)
+                print("🔄 matches.json convertito al nuovo formato")
+                return converted
+            return {"matches": {}, "manual": [], "blacklist": []}
+    except:
+        return {"matches": {}, "manual": [], "blacklist": []}
 
 def save_matches(data):
     with open(MATCHES_FILE, "w", encoding="utf-8") as f:
@@ -121,6 +132,14 @@ END:VCALENDAR
         f.write(ics_content)
     return filename
 
+def get_match_key(match_str: str):
+    try:
+        lines = match_str.split("\n")
+        if len(lines) >= 4:
+            return lines[3].replace("🔗", "").strip()
+    except: pass
+    return ""
+
 def get_weather_data():
     try:
         url = "https://api.open-meteo.com/v1/forecast?latitude=44.407&longitude=8.934&daily=weathercode,temperature_2m_max,temperature_2m_min&timezone=Europe/Rome"
@@ -131,28 +150,12 @@ def get_weather_data():
 
 def weather_description(code):
     mapping = {
-        0: "Cielo sereno",
-        1: "Prevalentemente sereno",
-        2: "Parzialmente nuvoloso",
-        3: "Coperto",
-        45: "Nebbia",
-        48: "Nebbia con brina",
-        51: "Pioviggine leggera",
-        53: "Pioviggine moderata",
-        55: "Pioviggine intensa",
-        61: "Pioggia leggera",
-        63: "Pioggia moderata",
-        65: "Pioggia intensa",
-        71: "Neve leggera",
-        73: "Neve moderata",
-        75: "Neve intensa",
-        77: "Granelli di neve",
-        80: "Rovesci leggeri",
-        81: "Rovesci moderati",
-        82: "Rovesci violenti",
-        95: "Temporale",
-        96: "Temporale con grandine",
-        99: "Temporale con grandine intensa"
+        0: "Cielo sereno", 1: "Prevalentemente sereno", 2: "Parzialmente nuvoloso", 3: "Coperto",
+        45: "Nebbia", 48: "Nebbia con brina", 51: "Pioviggine leggera", 53: "Pioviggine moderata",
+        55: "Pioviggine intensa", 61: "Pioggia leggera", 63: "Pioggia moderata", 65: "Pioggia intensa",
+        71: "Neve leggera", 73: "Neve moderata", 75: "Neve intensa", 77: "Granelli di neve",
+        80: "Rovesci leggeri", 81: "Rovesci moderati", 82: "Rovesci violenti",
+        95: "Temporale", 96: "Temporale con grandine", 99: "Temporale con grandine intensa"
     }
     return mapping.get(code, "Condizioni variabili")
 
@@ -179,7 +182,8 @@ async def extract_matches(url: str):
         team_official_norm = normalize(team_official_name)
         print(f"🏷️ Nome ufficiale squadra: {team_official_name}")
 
-        blocks = await page.query_selector_all("div[data-testid='wcl-MatchRow']") or await page.query_selector_all("div.event__match")
+        blocks = await page.query_selector_all("div[data-testid='wcl-MatchRow']") or \
+                 await page.query_selector_all("div.event__match")
         print(f"➡️ Trovati {len(blocks)} blocchi partita")
         matches = []
 
@@ -259,59 +263,98 @@ async def add_match_manually(link: str):
         formatted_date, formatted_time = format_match_date(raw_time)
         match_str = f"📅 {formatted_date}\n🕒 {formatted_time}\n➡️ {home} vs {away}\n🔗 {link}"
 
-        # Salvataggio nel database (chiave = squadra di casa)
-        stored = load_matches()
-        home_norm = normalize(home)
-        if home_norm not in stored:
-            stored[home_norm] = []
-        if match_str not in stored[home_norm]:
-            stored[home_norm].append(match_str)
-        save_matches(stored)
-        print("🟩 Partita aggiunta al database")
+        data = load_matches()
+        if "manual" not in data or not isinstance(data["manual"], list):
+            data["manual"] = []
+        if match_str not in data["manual"]:
+            data["manual"].append(match_str)
+            save_matches(data)
+            print("🟩 Partita aggiunta alla sezione manual")
 
-        # Genera e invia ICS
-        emoji = get_sport_emoji(home_norm)
-        is_waterpolo = (emoji == "🤽‍♂️")
-        ics_file = create_ics_event(home, away, formatted_date, formatted_time, link, is_waterpolo)
-        if ics_file:
-            send_ics_file(ics_file)
-            os.remove(ics_file)
-            print("🟩 ICS generato e inviato")
+            emoji = get_sport_emoji(home)
+            is_waterpolo = (emoji == "🤽‍♂️")
+            ics_file = create_ics_event(home, away, formatted_date, formatted_time, link, is_waterpolo)
+            if ics_file:
+                send_ics_file(ics_file)
+                os.remove(ics_file)
+                print("🟩 ICS generato e inviato")
 
         send_telegram_message(f"⚠️ ! NUOVA PARTITA AGGIUNTA MANUALMENTE ! ⚠️\n\n{match_str}")
 
         await browser.close()
 
-async def listen_for_commands():
-    print("👂 Bot in ascolto per comandi Telegram (/addmatch)...")
-    offset = 0
-    while True:
-        try:
-            url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/getUpdates?offset={offset}&timeout=30"
-            resp = requests.get(url, timeout=35).json()
-            for update in resp.get("result", []):
-                offset = update["update_id"] + 1
-                if "message" in update and "text" in update["message"]:
-                    text = update["message"]["text"].strip()
-                    if text.startswith("/addmatch "):
-                        link = text.split(maxsplit=1)[1].strip()
-                        await add_match_manually(link)
-        except Exception as e:
-            print(f"⚠️ Errore polling Telegram: {e}")
-        await asyncio.sleep(3)
+async def remove_match_manually(link: str):
+    print(f"🟥 Comando /removematch ricevuto per: {link}")
+    data = load_matches()
+    found = False
+    removed_str = None
+
+    # Rimuovi da matches (tutte le squadre)
+    for team, matches in list(data.get("matches", {}).items()):
+        for m in matches[:]:
+            if get_match_key(m) == link:
+                removed_str = m
+                matches.remove(m)
+                found = True
+                break
+        if found: break
+
+    # Rimuovi da manual
+    if not found and "manual" in data and isinstance(data["manual"], list):
+        for m in data["manual"][:]:
+            if get_match_key(m) == link:
+                removed_str = m
+                data["manual"].remove(m)
+                found = True
+                break
+
+    if not found:
+        send_telegram_message("❌ Partita non trovata.")
+        return
+
+    if "blacklist" not in data or not isinstance(data.get("blacklist"), list):
+        data["blacklist"] = []
+    if link not in data["blacklist"]:
+        data["blacklist"].append(link)
+
+    save_matches(data)
+    send_telegram_message(f"❌ Partita rimossa e aggiunta alla blacklist:\n\n{removed_str or link}")
+
+async def read_pending_commands():
+    print("📥 Lettura comandi pendenti da Telegram (una sola volta)...")
+    try:
+        url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/getUpdates?timeout=15"
+        resp = requests.get(url, timeout=20).json()
+        for update in resp.get("result", []):
+            if "message" not in update or "text" not in update["message"]:
+                continue
+            text = update["message"]["text"].strip()
+            if text.startswith("/addmatch "):
+                link = text.split(maxsplit=1)[1].strip()
+                await add_match_manually(link)
+            elif text.startswith("/removematch "):
+                link = text.split(maxsplit=1)[1].strip()
+                await remove_match_manually(link)
+    except Exception as e:
+        print(f"⚠️ Errore lettura comandi pendenti: {e}")
 
 async def main():
-    print("🚀 Avvio bot Diretta.it (Locale)")
-    stored = load_matches()
+    print("🚀 Avvio bot Diretta.it (GitHub Actions)")
+    data = load_matches()
+    stored = data.get("matches", {})
+    manual_list = data.get("manual", [])
+    blacklist = data.get("blacklist", [])
     updated = {}
     total_new_matches = 0
 
     for team_name, url in TEAMS.items():
         print("\n==============================")
         print(f"👀 Squadra: {team_name}")
+
         extracted = await extract_matches(url)
-        old_list = stored.get(team_name, [])
-        new_list = [match_str for _, _, _, match_str in extracted]
+        old_list = stored.get(team_name, []) + manual_list
+        new_list = [match_str for _, _, _, match_str in extracted 
+                    if get_match_key(match_str) not in blacklist]
 
         for match_str in new_list:
             lines = match_str.split("\n")
@@ -359,27 +402,37 @@ async def main():
 
         updated[team_name] = new_list
 
-    save_matches(updated)
-    print("✅ Fine esecuzione scraping")
+    final_data = {
+        "matches": updated,
+        "manual": manual_list,
+        "blacklist": blacklist
+    }
+    save_matches(final_data)
+    print("✅ Fine esecuzione scraping - matches.json salvato")
 
-    # ==================== RIEPILOGO 28 GIORNI (METEO SOSTITUITO) ====================
-    stored = load_matches()
+    # ==================== RIEPILOGO 28 GIORNI ====================
+    data = load_matches()
+    all_matches = list(data.get("matches", {}).values()) + [data.get("manual", [])]
+    all_matches_flat = [m for sublist in all_matches for m in sublist]
+
     today = datetime.now()
     start_day = today.replace(hour=0, minute=0, second=0, microsecond=0)
     end_day = start_day + timedelta(days=28)
     days_list = [start_day + timedelta(days=i) for i in range(28)]
     matches_by_day = {d.date(): [] for d in days_list}
+    blacklist = data.get("blacklist", [])
 
-    for team_name, matches in stored.items():
-        emoji = get_sport_emoji(team_name)
-        for match in matches:
-            lines = match.split("\n")
-            if len(lines) < 4: continue
-            dt = parse_italian_formatted_date(
-                lines[0].replace("📅", "").strip(),
-                lines[1].replace("🕒", "").strip())
-            if dt and start_day <= dt < end_day:
-                matches_by_day[dt.date()].append((dt, team_name, emoji, match))
+    for match in all_matches_flat:
+        if get_match_key(match) in blacklist: continue
+        lines = match.split("\n")
+        if len(lines) < 4: continue
+        dt = parse_italian_formatted_date(
+            lines[0].replace("📅", "").strip(),
+            lines[1].replace("🕒", "").strip())
+        if dt and start_day <= dt < end_day:
+            team_name = lines[2].replace("➡️", "").strip().split(" vs ")[0].strip()
+            emoji = get_sport_emoji(team_name)
+            matches_by_day[dt.date()].append((dt, team_name, emoji, match))
 
     def format_italian_date(d):
         return f"{ITALIAN_DAYS[d.weekday()]} {d.day} {ITALIAN_MONTHS[d.month-1]} {d.year}"
@@ -393,7 +446,6 @@ async def main():
     wx_map = {wx_dates[i]: (wx_codes[i], wx_max[i], wx_min[i]) for i in range(len(wx_dates))}
 
     empty_start = None
-
     for d in days_list:
         day_key = d.date()
         day_label = format_italian_date(d)
@@ -439,6 +491,8 @@ async def main():
     riepilogo += f"⏰ {timestamp.strftime('%H:%M')} | {timestamp.strftime('%A %d %B')}"
 
     send_long_message(riepilogo)
+    print("🏁 Esecuzione terminata - run chiusa.")
 
 if __name__ == "__main__":
-    asyncio.run(main())           # Esegue lo scraping + riepilogo
+    asyncio.run(read_pending_commands())
+    asyncio.run(main())
