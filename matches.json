@@ -21,7 +21,6 @@
             "📅 Domenica 18 Aprile 2027\n🕒 00:00\n➡️ Vado vs Vis Pesaro\n🔗 https://www.diretta.it/partita/calcio/vado-8WeFoDPP/vis-pesaro-pYTSXlNe/?mid=0tVPwp1U"
         ],
         "SPEZIA CALCIO": [
-            "📅 Sabato 29 Agosto 2026\n🕒 21:00\n➡️ Spezia vs Campobasso\n🔗 https://www.diretta.it/partita/calcio/campobasso-8rNMmUnk/spezia-re6VD39b/?mid=O8eLW8r3",
             "📅 Mercoledì 2 Settembre 2026\n🕒 21:00\n➡️ Spezia vs Vado\n🔗 https://www.diretta.it/partita/calcio/spezia-re6VD39b/vado-8WeFoDPP/?mid=WEAL3826",
             "📅 Sabato 12 Settembre 2026\n🕒 18:00\n➡️ Spezia vs Livorno\n🔗 https://www.diretta.it/partita/calcio/livorno-0zxhbdWT/spezia-re6VD39b/?mid=IoRQ4gfn",
             "📅 Lunedì 21 Settembre 2026\n🕒 20:30\n➡️ Spezia vs Vis Pesaro\n🔗 https://www.diretta.it/partita/calcio/spezia-re6VD39b/vis-pesaro-pYTSXlNe/?mid=pKkqJ4Wg",
@@ -301,13 +300,16 @@
         "📅 Mercoledì 5 Agosto 2026\n🕒 17:00\n➡️ Entella (ITA) vs Novara (ITA)\n🔗 https://www.diretta.it/partita/calcio/entella-hUuJfYbb/novara-rPRQmc5D/?mid=GlwaMezi",
         "📅 Domenica 16 Agosto 2026\n🕒 21:15\n➡️ Lazio vs Mantova\n🔗 https://www.diretta.it/partita/calcio/lazio-URcSl02h/mantova-z7WK5Pwb/?mid=Qs5z3m9j",
         "📅 Lunedì 17 Agosto 2026\n🕒 18:00\n➡️ Pisa vs Empoli\n🔗 https://www.diretta.it/partita/calcio/empoli-0ESCnI1H/pisa-roasMsOT/?mid=CKIHchXA",
-        "📅 Sabato 8 Agosto 2026\n🕒 14:45\n➡️ Radomiak Radom vs Gornik Zabrze\n🔗 https://www.diretta.it/partita/calcio/gornik-zabrze-2LH3Ywq4/radomiak-radom-zD5nYhAT/?mid=MRy6noxg"
+        "📅 Sabato 8 Agosto 2026\n🕒 14:45\n➡️ Radomiak Radom vs Gornik Zabrze\n🔗 https://www.diretta.it/partita/calcio/gornik-zabrze-2LH3Ywq4/radomiak-radom-zD5nYhAT/?mid=MRy6noxg",
+        "📅 Sabato 29 Agosto 2026\n🕒 18:30\n➡️ Sassuolo vs Torino\n🔗 https://www.diretta.it/partita/calcio/sassuolo-QDdvI0zl/torino-MZFZnvX4/",
+        "📅 Martedì 1 Settembre 2026\n🕒 18:00\n➡️ Parma vs Cremonese\n🔗 https://www.diretta.it/partita/calcio/cremonese-KUzfp5N3/parma-6DxlaxHN/tabellone/marcatori/?mid=W6IglL9E"
     ],
     "blacklist": [
         "https://www.diretta.it/partita/calcio/cska-sofia-0xFNNECi/qarabag-agdam-Qgd3eSin/?mid=IibkzKD6",
         "https://www.diretta.it/partita/calcio/genoa-d0PJxeie/napoli-69Dxbc61/?mid=z9lazV4t",
         "https://www.diretta.it/partita/calcio/novara-rPRQmc5D/sampdoria-nJbCGx2U/?mid=0UC7DjeC",
         "https://www.diretta.it/partita/calcio/juve-stabia-hKSfjtsQ/sampdoria-nJbCGx2U/?mid=fNOUa3E7",
-        "https://www.diretta.it/partita/calcio/genoa-zDpdICPp/inter-tnmMpaCE/?mid=CKh70hHt"
+        "https://www.diretta.it/partita/calcio/genoa-zDpdICPp/inter-tnmMpaCE/?mid=CKh70hHt",
+        "https://www.diretta.it/partita/calcio/campobasso-8rNMmUnk/spezia-re6VD39b/?mid=O8eLW8r3"
     ]
 }
