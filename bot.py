@@ -320,6 +320,80 @@ async def remove_match_manually(link: str):
     save_matches(data)
     send_telegram_message(f"❌ Partita rimossa e aggiunta alla blacklist:\n\n{removed_str or link}")
 
+async def green_match(link: str):
+    print(f"🟩 Comando /green ricevuto per: {link}")
+    data = load_matches()
+    found = False
+
+    # Cerca in matches
+    for team, matches in list(data.get("matches", {}).items()):
+        for i, m in enumerate(matches):
+            if get_match_key(m) == link:
+                lines = m.split("\n")
+                if len(lines) >= 3:
+                    if "🟩🟩🟩" not in lines[2]:
+                        lines[2] = lines[2] + " 🟩🟩🟩"
+                        matches[i] = "\n".join(lines)
+                        found = True
+                break
+        if found:
+            break
+
+    # Cerca in manual
+    if not found:
+        for i, m in enumerate(data.get("manual", [])):
+            if get_match_key(m) == link:
+                lines = m.split("\n")
+                if len(lines) >= 3:
+                    if "🟩🟩🟩" not in lines[2]:
+                        lines[2] = lines[2] + " 🟩🟩🟩"
+                        data["manual"][i] = "\n".join(lines)
+                        found = True
+                break
+
+    if not found:
+        send_telegram_message("❌ Partita non trovata.")
+        return
+
+    save_matches(data)
+    send_telegram_message(f"🟩🟩🟩 Pallini verdi aggiunti alla partita:\n\n{link}")
+
+async def remove_green(link: str):
+    print(f"🟦 Comando /removegreen ricevuto per: {link}")
+    data = load_matches()
+    found = False
+
+    # Cerca in matches
+    for team, matches in list(data.get("matches", {}).items()):
+        for i, m in enumerate(matches):
+            if get_match_key(m) == link:
+                lines = m.split("\n")
+                if len(lines) >= 3 and "🟩🟩🟩" in lines[2]:
+                    lines[2] = lines[2].replace("🟩🟩🟩", "").rstrip()
+                    matches[i] = "\n".join(lines)
+                    found = True
+                break
+        if found:
+            break
+
+    # Cerca in manual
+    if not found:
+        for i, m in enumerate(data.get("manual", [])):
+            if get_match_key(m) == link:
+                lines = m.split("\n")
+                if len(lines) >= 3 and "🟩🟩🟩" in lines[2]:
+                    lines[2] = lines[2].replace("🟩🟩🟩", "").rstrip()
+                    data["manual"][i] = "\n".join(lines)
+                    found = True
+                break
+
+    if not found:
+        send_telegram_message("❌ Partita non trovata.")
+        return
+
+    save_matches(data)
+    send_telegram_message(f"🟦 Pallini verdi rimossi dalla partita:\n\n{link}")
+
 async def read_pending_commands():
     print("📥 Lettura comandi pendenti da Telegram (una sola volta)...")
     try:
@@ -335,6 +409,15 @@ async def read_pending_commands():
             elif text.startswith("/removematch "):
                 link = text.split(maxsplit=1)[1].strip()
                 await remove_match_manually(link)
+            elif text.startswith("/green "):
+            link = text.split(maxsplit=1)[1].strip()
+            await green_match(link)
+
+            elif text.startswith("/removegreen "):
+            link = text.split(maxsplit=1)[1].strip()
+            await remove_green(link)
+
+
     except Exception as e:
         print(f"⚠️ Errore lettura comandi pendenti: {e}")
 
