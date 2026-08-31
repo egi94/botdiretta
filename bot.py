@@ -410,12 +410,11 @@ async def read_pending_commands():
                 link = text.split(maxsplit=1)[1].strip()
                 await remove_match_manually(link)
             elif text.startswith("/green "):
-            link = text.split(maxsplit=1)[1].strip()
-            await green_match(link)
-
+                link = text.split(maxsplit=1)[1].strip()
+                await green_match(link)
             elif text.startswith("/removegreen "):
-            link = text.split(maxsplit=1)[1].strip()
-            await remove_green(link)
+                link = text.split(maxsplit=1)[1].strip()
+                await remove_green(link)
 
 
     except Exception as e:
