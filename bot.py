@@ -321,78 +321,68 @@ async def remove_match_manually(link: str):
     send_telegram_message(f"❌ Partita rimossa e aggiunta alla blacklist:\n\n{removed_str or link}")
 
 async def green_match(link: str):
-    print(f"🟩 Comando /green ricevuto per: {link}")
     data = load_matches()
     found = False
 
-    # Cerca in matches
-    for team, matches in list(data.get("matches", {}).items()):
+    for team, matches in data.get("matches", {}).items():
         for i, m in enumerate(matches):
             if get_match_key(m) == link:
                 lines = m.split("\n")
                 if len(lines) >= 3:
                     if "🟩🟩🟩" not in lines[2]:
-                        lines[2] = lines[2] + " 🟩🟩🟩"
-                        matches[i] = "\n".join(lines)
-                        found = True
+                        lines[2] = f"{lines[2]} 🟩🟩🟩"
+                    matches[i] = "\n".join(lines)
+                found = True
                 break
-        if found:
-            break
+        if found: break
 
-    # Cerca in manual
-    if not found:
-        for i, m in enumerate(data.get("manual", [])):
+    if not found and "manual" in data and isinstance(data["manual"], list):
+        for i, m in enumerate(data["manual"]):
             if get_match_key(m) == link:
                 lines = m.split("\n")
                 if len(lines) >= 3:
                     if "🟩🟩🟩" not in lines[2]:
-                        lines[2] = lines[2] + " 🟩🟩🟩"
-                        data["manual"][i] = "\n".join(lines)
-                        found = True
+                        lines[2] = f"{lines[2]} 🟩🟩🟩"
+                    data["manual"][i] = "\n".join(lines)
+                found = True
                 break
 
-    if not found:
+    if found:
+        save_matches(data)
+        send_telegram_message(f"🟩🟩🟩 Pallini verdi aggiunti alla partita:\n\n{link}")
+    else:
         send_telegram_message("❌ Partita non trovata.")
-        return
-
-    save_matches(data)
-    send_telegram_message(f"🟩🟩🟩 Pallini verdi aggiunti alla partita:\n\n{link}")
 
 async def remove_green(link: str):
-    print(f"🟦 Comando /removegreen ricevuto per: {link}")
     data = load_matches()
     found = False
 
-    # Cerca in matches
-    for team, matches in list(data.get("matches", {}).items()):
+    for team, matches in data.get("matches", {}).items():
         for i, m in enumerate(matches):
             if get_match_key(m) == link:
                 lines = m.split("\n")
                 if len(lines) >= 3 and "🟩🟩🟩" in lines[2]:
                     lines[2] = lines[2].replace("🟩🟩🟩", "").rstrip()
                     matches[i] = "\n".join(lines)
-                    found = True
+                found = True
                 break
-        if found:
-            break
+        if found: break
 
-    # Cerca in manual
-    if not found:
-        for i, m in enumerate(data.get("manual", [])):
+    if not found and "manual" in data and isinstance(data["manual"], list):
+        for i, m in enumerate(data["manual"]):
             if get_match_key(m) == link:
                 lines = m.split("\n")
                 if len(lines) >= 3 and "🟩🟩🟩" in lines[2]:
                     lines[2] = lines[2].replace("🟩🟩🟩", "").rstrip()
                     data["manual"][i] = "\n".join(lines)
-                    found = True
+                found = True
                 break
 
-    if not found:
+    if found:
+        save_matches(data)
+        send_telegram_message(f"🟦 Pallini verdi rimossi dalla partita:\n\n{link}")
+    else:
         send_telegram_message("❌ Partita non trovata.")
-        return
-
-    save_matches(data)
-    send_telegram_message(f"🟦 Pallini verdi rimossi dalla partita:\n\n{link}")
 
 async def read_pending_commands():
     print("📥 Lettura comandi pendenti da Telegram (una sola volta)...")
@@ -415,8 +405,6 @@ async def read_pending_commands():
             elif text.startswith("/removegreen "):
                 link = text.split(maxsplit=1)[1].strip()
                 await remove_green(link)
-
-
     except Exception as e:
         print(f"⚠️ Errore lettura comandi pendenti: {e}")
 
@@ -450,33 +438,14 @@ async def main():
             for old in old_list:
                 o = old.split("\n")
                 if len(o) < 4: continue
-            vs_old = o[2].replace("➡️", "").replace("🟩🟩🟩", "").strip()
-            vs_new = new_vs.replace("🟩🟩🟩", "").strip()
---- a/bot.py
-+++ b/bot.py
-@@ -412,12 +412,20 @@
-     old_match_found = old_date = old_time = None
-     for old in old_list:
-         o = old.split("\n")
-         if len(o) < 4:
-             continue
+                if o[2].replace("➡️", "").strip() == new_vs and o[3].replace("🔗", "").strip() == new_url:
+                    old_match_found = old
+                    old_date = o[0].replace("📅", "").strip()
+                    old_time = o[1].replace("🕒", "").strip()
+                    break
 
--        if o[2].replace("➡️", "").strip() == new_vs and o[3].replace("🔗", "").strip() == new_url:
--            old_match_found = old
--            old_date = o[0].replace("📅", "").strip()
--            old_time = o[1].replace("🕒", "").strip()
--            break
-+        # Normalizzazione VS ignorando i pallini verdi
-+        vs_old = o[2].replace("➡️", "").replace("🟩🟩🟩", "").strip()
-+        vs_new = new_vs.replace("🟩🟩🟩", "").strip()
-+
-+        # Confronto corretto ignorando i pallini verdi
-+        if vs_old == vs_new and o[3].replace("🔗", "").strip() == new_url:
-+            old_match_found = old
-+            old_date = o[0].replace("📅", "").strip()
-+            old_time = o[1].replace("🕒", "").strip()
-+            break
-
+            emoji = get_sport_emoji(team_name)
+            clean_name = team_name.upper().strip()
 
             if old_match_found is None:
                 total_new_matches += 1
@@ -577,7 +546,8 @@ async def main():
         riepilogo += f"───────────────────────────────\n📌 *{day_label}* ({meteo_str})\n\n"
         for _, team_name, emoji, match in day_matches:
             lines = match.split("\n")
-            riepilogo += f"{emoji} *{team_name}*\n• {lines[1].replace('🕒','').strip()} — {lines[2].replace('➡️','').strip()}\n  🔗 {lines[3].replace('🔗','').strip()}\n\n"
+            vs_line = lines[2].replace("➡️", "").strip()
+            riepilogo += f"{emoji} *{team_name}*\n• {lines[1].replace('🕒','').strip()} — {vs_line}\n  🔗 {lines[3].replace('🔗','').strip()}\n\n"
 
     if empty_start:
         end_empty = end_day - timedelta(days=1)
