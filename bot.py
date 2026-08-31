@@ -450,14 +450,33 @@ async def main():
             for old in old_list:
                 o = old.split("\n")
                 if len(o) < 4: continue
-                if o[2].replace("➡️", "").strip() == new_vs and o[3].replace("🔗", "").strip() == new_url:
-                    old_match_found = old
-                    old_date = o[0].replace("📅", "").strip()
-                    old_time = o[1].replace("🕒", "").strip()
-                    break
+            vs_old = o[2].replace("➡️", "").replace("🟩🟩🟩", "").strip()
+            vs_new = new_vs.replace("🟩🟩🟩", "").strip()
+--- a/bot.py
++++ b/bot.py
+@@ -412,12 +412,20 @@
+     old_match_found = old_date = old_time = None
+     for old in old_list:
+         o = old.split("\n")
+         if len(o) < 4:
+             continue
 
-            emoji = get_sport_emoji(team_name)
-            clean_name = team_name.upper().strip()
+-        if o[2].replace("➡️", "").strip() == new_vs and o[3].replace("🔗", "").strip() == new_url:
+-            old_match_found = old
+-            old_date = o[0].replace("📅", "").strip()
+-            old_time = o[1].replace("🕒", "").strip()
+-            break
++        # Normalizzazione VS ignorando i pallini verdi
++        vs_old = o[2].replace("➡️", "").replace("🟩🟩🟩", "").strip()
++        vs_new = new_vs.replace("🟩🟩🟩", "").strip()
++
++        # Confronto corretto ignorando i pallini verdi
++        if vs_old == vs_new and o[3].replace("🔗", "").strip() == new_url:
++            old_match_found = old
++            old_date = o[0].replace("📅", "").strip()
++            old_time = o[1].replace("🕒", "").strip()
++            break
+
 
             if old_match_found is None:
                 total_new_matches += 1
