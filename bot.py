@@ -321,82 +321,68 @@ async def remove_match_manually(link: str):
     send_telegram_message(f"❌ Partita rimossa e aggiunta alla blacklist:\n\n{removed_str or link}")
 
 async def green_match(link: str):
-    print(f"🟩 Comando /green ricevuto per: {link}")
     data = load_matches()
-    found = False
-    updated_match = None
+    found_match = None
 
     for team, matches in data.get("matches", {}).items():
         for i, m in enumerate(matches):
             if get_match_key(m) == link:
                 lines = m.split("\n")
-                if len(lines) >= 3:
+                if len(lines) >= 4:
                     if not lines[2].endswith(" 🟩🟩🟩"):
                         lines[2] = lines[2] + " 🟩🟩🟩"
-                    new_match_str = "\n".join(lines)
-                    matches[i] = new_match_str
-                    updated_match = new_match_str
-                    found = True
-                    break
-        if found: break
+                        matches[i] = "\n".join(lines)
+                    found_match = matches[i]
+                break
+        if found_match:
+            break
 
-    if not found and "manual" in data and isinstance(data["manual"], list):
+    if not found_match and "manual" in data and isinstance(data["manual"], list):
         for i, m in enumerate(data["manual"]):
             if get_match_key(m) == link:
                 lines = m.split("\n")
-                if len(lines) >= 3:
+                if len(lines) >= 4:
                     if not lines[2].endswith(" 🟩🟩🟩"):
                         lines[2] = lines[2] + " 🟩🟩🟩"
-                    new_match_str = "\n".join(lines)
-                    data["manual"][i] = new_match_str
-                    updated_match = new_match_str
-                    found = True
-                    break
+                        data["manual"][i] = "\n".join(lines)
+                    found_match = data["manual"][i]
+                break
 
-    if found:
+    if found_match:
         save_matches(data)
-        send_telegram_message(f"🟩 Partita contrassegnata in verde:\n\n{updated_match}")
-    else:
-        send_telegram_message("❌ Partita non trovata per /green.")
+        send_telegram_message(f"🟩 Partita contrassegnata in verde:\n\n{found_match}")
 
-async def remove_green_match(link: str):
-    print(f"🟩 Comando /removegreen ricevuto per: {link}")
+async def remove_green(link: str):
     data = load_matches()
-    found = False
-    updated_match = None
+    found_match = None
 
     for team, matches in data.get("matches", {}).items():
         for i, m in enumerate(matches):
             if get_match_key(m) == link:
                 lines = m.split("\n")
-                if len(lines) >= 3:
+                if len(lines) >= 4:
                     if lines[2].endswith(" 🟩🟩🟩"):
-                        lines[2] = lines[2][:-7]
-                    new_match_str = "\n".join(lines)
-                    matches[i] = new_match_str
-                    updated_match = new_match_str
-                    found = True
-                    break
-        if found: break
+                        lines[2] = lines[2].replace(" 🟩🟩🟩", "")
+                        matches[i] = "\n".join(lines)
+                    found_match = matches[i]
+                break
+        if found_match:
+            break
 
-    if not found and "manual" in data and isinstance(data["manual"], list):
+    if not found_match and "manual" in data and isinstance(data["manual"], list):
         for i, m in enumerate(data["manual"]):
             if get_match_key(m) == link:
                 lines = m.split("\n")
-                if len(lines) >= 3:
+                if len(lines) >= 4:
                     if lines[2].endswith(" 🟩🟩🟩"):
-                        lines[2] = lines[2][:-7]
-                    new_match_str = "\n".join(lines)
-                    data["manual"][i] = new_match_str
-                    updated_match = new_match_str
-                    found = True
-                    break
+                        lines[2] = lines[2].replace(" 🟩🟩🟩", "")
+                        data["manual"][i] = "\n".join(lines)
+                    found_match = data["manual"][i]
+                break
 
-    if found:
+    if found_match:
         save_matches(data)
-        send_telegram_message(f"⬜ Pallini verdi rimossi dalla partita:\n\n{updated_match}")
-    else:
-        send_telegram_message("❌ Partita non trovata per /removegreen.")
+        send_telegram_message(f"⬜ Pallini verdi rimossi dalla partita:\n\n{found_match}")
 
 async def read_pending_commands():
     print("📥 Lettura comandi pendenti da Telegram (una sola volta)...")
@@ -418,7 +404,7 @@ async def read_pending_commands():
                 await green_match(link)
             elif text.startswith("/removegreen "):
                 link = text.split(maxsplit=1)[1].strip()
-                await remove_green_match(link)
+                await remove_green(link)
     except Exception as e:
         print(f"⚠️ Errore lettura comandi pendenti: {e}")
 
@@ -560,7 +546,8 @@ async def main():
         riepilogo += f"───────────────────────────────\n📌 *{day_label}* ({meteo_str})\n\n"
         for _, team_name, emoji, match in day_matches:
             lines = match.split("\n")
-            riepilogo += f"{emoji} *{team_name}*\n• {lines[1].replace('🕒','').strip()} — {lines[2].replace('➡️','').strip()}\n  🔗 {lines[3].replace('🔗','').strip()}\n\n"
+            vs_line = lines[2].replace("➡️", "").strip()
+            riepilogo += f"{emoji} *{team_name}*\n• {lines[1].replace('🕒','').strip()} — {vs_line}\n  🔗 {lines[3].replace('🔗','').strip()}\n\n"
 
     if empty_start:
         end_empty = end_day - timedelta(days=1)
