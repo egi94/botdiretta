@@ -57,7 +57,9 @@ def send_telegram_message(text: str, auto_delete_sec=None):
                     del_url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/deleteMessage"
                     requests.post(del_url, json={"chat_id": CHAT_ID, "message_id": msg_id}, timeout=10)
                 except: pass
-            threading.Timer(auto_delete_sec, _delete).start()
+            timer = threading.Timer(auto_delete_sec, _delete)
+            timer.daemon = True
+            timer.start()
         return msg_id
     except: return None
 
@@ -313,6 +315,106 @@ async def add_match_manual_custom(raw_command: str):
         send_telegram_message(f"⚠️! NUOVA PARTITA MANUALE! ⚠️\n\n{get_sport_emoji(home)} {match_str}", auto_delete_sec=AUTO_DELETE_SECONDS)
     except Exception as e: send_telegram_message(f"❌ Errore /addmanual: {e}", auto_delete_sec=AUTO_DELETE_SECONDS)
 
+async def mod_match_manual_custom(raw_command: str):
+    try:
+        payload = raw_command.replace("/modmanual", "", 1).strip()
+        if " - " in payload: parts = [p.strip() for p in payload.split(" - ")]
+        elif "|" in payload: parts = [p.strip() for p in payload.split("|")]
+        else:
+            tmp = [p.strip() for p in payload.split("-")]
+            if len(tmp) > 3: parts = [tmp[0], tmp[1], tmp[2], "-".join(tmp[3:]).strip()]
+            else: parts = tmp
+
+        if len(parts) < 3:
+            send_telegram_message("❌ Formato errato\nUsa: /modmanual Casa - Trasferta - 07/04/2027 21:00 - https://nuovo-link-opzionale", auto_delete_sec=AUTO_DELETE_SECONDS); return
+
+        home, away, datetime_raw = parts[0], parts[1], parts[2]
+        new_link_raw = parts[3] if len(parts) >= 4 else None
+        new_link = normalize_link(new_link_raw) if new_link_raw else None
+
+        # normalizza vs ricercato
+        vs_search = normalize_vs(f"{home} vs {away}")
+
+        data = load_matches()
+        manual_list = data.get("manual", [])
+        found_idx = -1
+        old_match_str = None
+        old_date_str = old_time_str = old_link = ""
+
+        for idx, m in enumerate(manual_list):
+            vs = get_match_vs(m)
+            if not vs: continue
+            if normalize_vs(vs) == vs_search:
+                found_idx = idx
+                old_match_str = m
+                break
+
+        # fallback ricerca parziale
+        if found_idx == -1:
+            for idx, m in enumerate(manual_list):
+                vs = get_match_vs(m)
+                if vs_search in normalize_vs(vs):
+                    found_idx = idx
+                    old_match_str = m
+                    break
+
+        if found_idx == -1:
+            send_telegram_message(f"❌ Partita manuale non trovata: {home} vs {away}", auto_delete_sec=AUTO_DELETE_SECONDS)
+            return
+
+        lines = old_match_str.split("\n")
+        old_date_str = lines[0].replace("📅","").strip() if len(lines)>0 else ""
+        old_time_str = lines[1].replace("🕒","").strip() if len(lines)>1 else ""
+        old_link = get_match_key(old_match_str)
+
+        # parse nuova data
+        formatted_date, formatted_time = format_match_date(datetime_raw)
+        if all(day not in formatted_date for day in ITALIAN_DAYS):
+            dt = None
+            for fmt in ("%d/%m/%Y %H:%M", "%d-%m-%Y %H:%M", "%d.%m.%Y %H:%M", "%d/%m/%Y %H", "%d/%m/%Y", "%d/%m/%Y %H:%M:%S"):
+                try: dt = datetime.strptime(datetime_raw, fmt); break
+                except: continue
+            if dt:
+                formatted_date = f"{ITALIAN_DAYS[dt.weekday()]} {dt.day} {ITALIAN_MONTHS[dt.month-1]} {dt.year}"
+                formatted_time = dt.strftime("%H:%M")
+            else:
+                send_telegram_message(f"❌ Data non valida: {datetime_raw}", auto_delete_sec=AUTO_DELETE_SECONDS); return
+
+        final_link = new_link if new_link else old_link
+        # mantieni home/away originali per non perdere maiuscole, ma usa quelli nuovi se vuoi
+        # qui uso quelli passati nel comando
+        new_match_str = f"📅 {formatted_date}\n🕒 {formatted_time}\n➡️ {home} vs {away}\n🔗 {final_link}"
+
+        # aggiorna lista
+        manual_list[found_idx] = new_match_str
+        data["manual"] = manual_list
+
+        # se cambia link, migra stato e blacklist
+        if final_link!= old_link:
+            if old_link in data.get("status", {}):
+                data["status"][final_link] = data["status"][old_link]
+            if old_link in data.get("blacklist", []):
+                data["blacklist"].remove(old_link)
+
+        save_matches(data)
+
+        # ICS nuovo
+        ics_file = create_ics_event(home, away, formatted_date, formatted_time, final_link, get_sport_emoji(home) == "🤽‍♂️")
+        if ics_file:
+            try: send_ics_file(ics_file); os.remove(ics_file)
+            except: pass
+
+        # Messaggio variazione come da scraping
+        emoji = get_sport_emoji(home)
+        msg = f"⏰! VARIAZIONE! ⏰\n\n{emoji} Squadra: {home.upper()}\n"
+        msg += f"Vecchio: {old_date_str} {old_time_str}\n"
+        msg += f"Nuovo: {formatted_date} {formatted_time}\n"
+        msg += f"➡️ {home} vs {away}\n🔗 {final_link}"
+        send_telegram_message(msg)
+
+    except Exception as e:
+        send_telegram_message(f"❌ Errore /modmanual: {e}", auto_delete_sec=AUTO_DELETE_SECONDS)
+
 async def remove_match_manually(link: str):
     link = normalize_link(link)
     data = load_matches(); found=False; removed_str=None
@@ -363,6 +465,7 @@ async def read_pending_commands():
                 elif low.startswith("/purple "): set_match_status(text.split(maxsplit=1)[1], "purple")
                 elif low.startswith("/yellow "): set_match_status(text.split(maxsplit=1)[1], "yellow")
                 elif text.startswith("/addmanual "): await add_match_manual_custom(text)
+                elif text.startswith("/modmanual "): await mod_match_manual_custom(text)
                 elif text.startswith("/addmatch "): await add_match_manually(text.split(maxsplit=1)[1])
                 elif text.startswith("/removematch "): await remove_match_manually(text.split(maxsplit=1)[1])
     except Exception as e: print(f"⚠️ Errore comandi: {e}")
