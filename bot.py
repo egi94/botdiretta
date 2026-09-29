@@ -1,4 +1,4 @@
-import os, json, asyncio, requests
+import os, json, asyncio, requests, threading
 from playwright.async_api import async_playwright
 from dotenv import load_dotenv
 from datetime import datetime, timedelta
@@ -13,8 +13,10 @@ ITALIAN_MONTHS = ["Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno", 
 
 STATUS_EMOJI = {"yellow": "🟡", "green": "🟢", "red": "🔴", "purple": "🟣"}
 DEFAULT_STATUS = "🟡"
+AUTO_DELETE_SECONDS = 600 # 10 minuti
 
 def normalize(name: str): return name.lower().replace("_", " ").strip()
+def normalize_link(link: str): return link.strip().replace("\n","").replace("\r","").replace(" ","").replace("\u200b","")
 
 def format_match_date(raw_time: str):
     raw = raw_time.strip()
@@ -38,13 +40,23 @@ def get_sport_emoji(team_name: str):
     if "futsal" in name: return "🥅"
     return "⚽"
 
-def send_telegram_message(text: str):
+def send_telegram_message(text: str, auto_delete_sec=None):
     if not TELEGRAM_TOKEN or not CHAT_ID: return
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     try:
         r = requests.post(url, json={"chat_id": CHAT_ID, "text": text, "disable_web_page_preview": True, "parse_mode": "Markdown"}, timeout=10)
-        if r.status_code!= 200: print(f"⚠️ Telegram: {r.text}")
-    except Exception as e: print(f"⚠️ Eccezione Telegram: {e}")
+        if r.status_code!= 200: print(f"⚠️ Telegram: {r.text}"); return None
+        msg_id = r.json().get("result", {}).get("message_id")
+        if auto_delete_sec and msg_id:
+            def _delete():
+                try:
+                    del_url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/deleteMessage"
+                    requests.post(del_url, json={"chat_id": CHAT_ID, "message_id": msg_id}, timeout=10)
+                except: pass
+            threading.Timer(auto_delete_sec, _delete).start()
+        return msg_id
+    except Exception as e:
+        print(f"⚠️ Eccezione Telegram: {e}"); return None
 
 def send_long_message(text: str, max_len=3500):
     if len(text) <= max_len: send_telegram_message(text); return
@@ -54,7 +66,6 @@ def send_long_message(text: str, max_len=3500):
             last_newline = chunk.rfind("\n")
             if last_newline > max_len * 0.7: chunk = chunk[:last_newline]
         send_telegram_message(chunk.strip())
-        if i + max_len < len(text): asyncio.sleep(0.5)
 
 def send_ics_file(file_path):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendDocument"
@@ -103,7 +114,7 @@ def create_ics_event(home, away, date_str, time_str, url, is_waterpolo):
 def get_match_key(match_str: str):
     try:
         lines = match_str.split("\n")
-        if len(lines) >= 4: return lines[3].replace("🔗", "").strip()
+        if len(lines) >= 4: return normalize_link(lines[3].replace("🔗", "").strip())
     except: pass
     return ""
 
@@ -114,28 +125,19 @@ def get_match_vs(match_str: str):
     except: pass
     return ""
 
-# === METEO STRETT0 + SOLO EMOJI ===
+# === METEO ORIGINALE - SOLO EMOJI, NESSUN FILTRO ===
 def get_weather_data():
     try:
-        url = "https://api.open-meteo.com/v1/forecast?latitude=44.407&longitude=8.934&daily=weathercode,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max&timezone=Europe/Rome"
+        url = "https://api.open-meteo.com/v1/forecast?latitude=44.407&longitude=8.934&daily=weathercode,temperature_2m_max,temperature_2m_min&timezone=Europe/Rome"
         r = requests.get(url, timeout=10).json()
         d = r["daily"]
-        return d["time"], d["weathercode"], d["temperature_2m_max"], d["temperature_2m_min"], d["precipitation_sum"], d["precipitation_probability_max"]
+        return d["time"], d["weathercode"], d["temperature_2m_max"], d["temperature_2m_min"]
     except:
-        return [], [], [], [], [], []
+        return [], [], [], []
 
-def weather_description(code, precip_sum=None, precip_prob=None):
-    if precip_prob is None: precip_prob = 100
-    if precip_sum is None: precip_sum = 10
-    is_rain = code in (51, 53, 55, 56, 57, 61, 63, 65, 66, 67, 80, 81, 82)
-    is_snow = code in (71, 73, 75, 77, 85, 86)
-    is_storm = code in (95, 96, 99)
-    if is_rain or is_snow:
-        if precip_prob < 50 or precip_sum < 1.0:
-            return "☁️" if code!= 0 else "☀️"
-    if is_storm:
-        if precip_prob < 50 or precip_sum < 1.0:
-            return "☁️"
+def weather_description(code):
+    try: code = int(code)
+    except: return "☁️"
     if code == 0: return "☀️"
     if code in (1, 2, 3): return "☁️"
     if code in (45, 48): return "🌫️"
@@ -145,6 +147,7 @@ def weather_description(code, precip_sum=None, precip_prob=None):
     return "☁️"
 
 def set_match_status(link: str, color: str):
+    link = normalize_link(link)
     data = load_matches()
     if "status" not in data: data["status"] = {}
     emoji = STATUS_EMOJI.get(color, DEFAULT_STATUS)
@@ -157,7 +160,7 @@ def set_match_status(link: str, color: str):
     for m in all_matches:
         if get_match_key(m) == link:
             vs_text = get_match_vs(m); break
-    send_telegram_message(f"{emoji} Stato {color.upper()} impostato\n{vs_text or link}\n{emoji} {link}")
+    send_telegram_message(f"{emoji} Stato {color.upper()} impostato\n{vs_text or link}\n{emoji} {link}", auto_delete_sec=AUTO_DELETE_SECONDS)
 
 async def extract_matches(url: str):
     async with async_playwright() as p:
@@ -191,7 +194,7 @@ async def extract_matches(url: str):
                 href = await link_el.get_attribute("href") if link_el else None
                 match_url = "https://www.diretta.it" + href if href and href.startswith("/") else href
                 if team_official_norm not in normalize(home): continue
-                match_str = f"📅 {formatted_date}\n🕒 {formatted_time}\n➡️ {home} vs {away}\n🔗 {match_url}"
+                match_str = f"📅 {formatted_date}\n🕒 {formatted_time}\n➡️ {home} vs {away}\n🔗 {normalize_link(match_url)}"
                 matches.append((team_official_norm, home, away, match_str)); continue
             date_el = await block.query_selector("div.event__time--date") or await block.query_selector("span.event__time--date")
             time_el = await block.query_selector("div.event__time--time") or await block.query_selector("span.event__time--time")
@@ -205,15 +208,16 @@ async def extract_matches(url: str):
                 href = await link_el.get_attribute("href") if link_el else None
                 match_url = "https://www.diretta.it" + href if href and href.startswith("/") else href
                 if team_official_norm not in normalize(home): continue
-                match_str = f"📅 {formatted_date}\n🕒 {formatted_time}\n➡️ {home} vs {away}\n🔗 {match_url}"
+                match_str = f"📅 {formatted_date}\n🕒 {formatted_time}\n➡️ {home} vs {away}\n🔗 {normalize_link(match_url)}"
                 matches.append((team_official_norm, home, away, match_str))
         await browser.close()
         return matches
 
 async def add_match_manually(link: str):
+    link = normalize_link(link)
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True, args=["--disable-blink-features=AutomationControlled", "--no-sandbox", "--disable-dev-shm-usage"])
-        context = await browser.new_context(user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36", viewport={"width": 1366, "height": 768}, locale="it-IT", timezone_id="Europe/Rome")
+        context = await browser.new_context(user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36", viewport={"width": 1366, "height": 768}, locale="it-IT", timezone_id="Europe/Rome")
         page = await context.new_page()
         await page.goto(link, timeout=60000, wait_until="networkidle")
         await page.wait_for_timeout(3000)
@@ -230,7 +234,7 @@ async def add_match_manually(link: str):
             data["manual"].append(match_str); save_matches(data)
             ics_file = create_ics_event(home, away, formatted_date, formatted_time, link, get_sport_emoji(home) == "🤽‍♂️")
             if ics_file: send_ics_file(ics_file); os.remove(ics_file)
-        send_telegram_message(f"⚠️! NUOVA PARTITA MANUALMENTE! ⚠️\n\n{match_str}")
+        send_telegram_message(f"⚠️! NUOVA PARTITA MANUALMENTE! ⚠️\n\n{match_str}", auto_delete_sec=AUTO_DELETE_SECONDS)
         await browser.close()
 
 async def add_match_manual_custom(raw_command: str):
@@ -243,8 +247,8 @@ async def add_match_manual_custom(raw_command: str):
             if len(tmp) > 4: parts = [tmp[0], tmp[1], tmp[2], "-".join(tmp[3:]).strip()]
             else: parts = tmp
         if len(parts) < 4:
-            send_telegram_message("❌ Formato errato\nUsa: /addmanual Casa - Trasferta - 15.10.2026 20:30 - https://link"); return
-        home, away, datetime_raw, link = parts[0], parts[1], parts[2], parts[3]
+            send_telegram_message("❌ Formato errato\nUsa: /addmanual Casa - Trasferta - 15.10.2026 20:30 - https://link", auto_delete_sec=AUTO_DELETE_SECONDS); return
+        home, away, datetime_raw, link = parts[0], parts[1], parts[2], normalize_link(parts[3])
         formatted_date, formatted_time = format_match_date(datetime_raw)
         if all(day not in formatted_date for day in ITALIAN_DAYS):
             dt = None
@@ -254,7 +258,7 @@ async def add_match_manual_custom(raw_command: str):
             if dt:
                 formatted_date = f"{ITALIAN_DAYS[dt.weekday()]} {dt.day} {ITALIAN_MONTHS[dt.month-1]} {dt.year}"
                 formatted_time = dt.strftime("%H:%M")
-            else: send_telegram_message(f"❌ Data non valida: {datetime_raw}"); return
+            else: send_telegram_message(f"❌ Data non valida: {datetime_raw}", auto_delete_sec=AUTO_DELETE_SECONDS); return
         match_str = f"📅 {formatted_date}\n🕒 {formatted_time}\n➡️ {home} vs {away}\n🔗 {link}"
         data = load_matches()
         if link in data.get("blacklist", []): data["blacklist"].remove(link)
@@ -262,17 +266,17 @@ async def add_match_manual_custom(raw_command: str):
         for v in data.get("matches", {}).values(): all_existing.extend(v)
         all_existing.extend(data.get("manual", []))
         if any(get_match_key(m) == link for m in all_existing):
-            send_telegram_message(f"⚠️ Già presente:\n{match_str}"); return
+            send_telegram_message(f"⚠️ Già presente:\n{match_str}", auto_delete_sec=AUTO_DELETE_SECONDS); return
         data["manual"].append(match_str); save_matches(data)
         ics_file = create_ics_event(home, away, formatted_date, formatted_time, link, get_sport_emoji(home) == "🤽‍♂️")
         if ics_file:
-            send_ics_file(ics_file)
-            try: os.remove(ics_file)
+            try: send_ics_file(ics_file); os.remove(ics_file)
             except: pass
-        send_telegram_message(f"⚠️! NUOVA PARTITA MANUALE! ⚠️\n\n{get_sport_emoji(home)} {match_str}")
-    except Exception as e: send_telegram_message(f"❌ Errore /addmanual: {e}")
+        send_telegram_message(f"⚠️! NUOVA PARTITA MANUALE! ⚠️\n\n{get_sport_emoji(home)} {match_str}", auto_delete_sec=AUTO_DELETE_SECONDS)
+    except Exception as e: send_telegram_message(f"❌ Errore /addmanual: {e}", auto_delete_sec=AUTO_DELETE_SECONDS)
 
 async def remove_match_manually(link: str):
+    link = normalize_link(link)
     data = load_matches(); found = False; removed_str = None
     for team, matches in list(data.get("matches", {}).items()):
         for m in matches[:]:
@@ -281,29 +285,49 @@ async def remove_match_manually(link: str):
     if not found:
         for m in data.get("manual", [])[:]:
             if get_match_key(m) == link: removed_str = m; data["manual"].remove(m); found = True; break
-    if not found: send_telegram_message("❌ Partita non trovata."); return
+    if not found:
+        send_telegram_message("❌ Partita non trovata.", auto_delete_sec=AUTO_DELETE_SECONDS); return
     if "blacklist" not in data: data["blacklist"] = []
     if link not in data["blacklist"]: data["blacklist"].append(link)
-    save_matches(data); send_telegram_message(f"❌ Partita rimossa:\n\n{removed_str or link}")
+    save_matches(data); send_telegram_message(f"❌ Partita rimossa:\n\n{removed_str or link}", auto_delete_sec=AUTO_DELETE_SECONDS)
 
-# === PATCH MULTI-COMANDO PER RIGA ===
+# FIX LINK SPEZZATI + MULTI-RIGA
 async def read_pending_commands():
     try:
         url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/getUpdates?timeout=15"
         resp = requests.get(url, timeout=20).json()
         for update in resp.get("result", []):
             if "message" not in update or "text" not in update["message"]: continue
-            full_text = update["message"]["text"].strip()
-            for text in full_text.splitlines():
-                text = text.strip()
-                if not text: continue
+            full_text = update["message"]["text"]
+            raw_lines = full_text.splitlines()
+            stitched = []
+            i=0
+            while i < len(raw_lines):
+                line = raw_lines[i].strip()
+                if not line: i+=1; continue
+                if line.startswith(("/green ","/red ","/purple ","/yellow ","/removematch ","/addmatch ")):
+                    cmd, url_part = line.split(maxsplit=1)
+                    full_url = url_part.strip()
+                    j=i+1
+                    while j < len(raw_lines):
+                        nxt = raw_lines[j].strip()
+                        if not nxt or nxt.startswith("/"): break
+                        if "&" in nxt or "=" in nxt or "season" in nxt or "pid" in nxt or "matchid" in nxt or (len(nxt)<50 and "?" in full_url):
+                            full_url += nxt
+                            j+=1
+                        else: break
+                    stitched.append(f"{cmd} {normalize_link(full_url)}")
+                    i=j
+                else:
+                    stitched.append(line); i+=1
+            for text in stitched:
                 if text.startswith("/addmanual "): await add_match_manual_custom(text)
-                elif text.startswith("/addmatch "): await add_match_manually(text.split(maxsplit=1)[1].strip())
-                elif text.startswith("/removematch "): await remove_match_manually(text.split(maxsplit=1)[1].strip())
-                elif text.startswith("/green "): set_match_status(text.split(maxsplit=1)[1].strip(), "green")
-                elif text.startswith("/red "): set_match_status(text.split(maxsplit=1)[1].strip(), "red")
-                elif text.startswith("/purple "): set_match_status(text.split(maxsplit=1)[1].strip(), "purple")
-                elif text.startswith("/yellow "): set_match_status(text.split(maxsplit=1)[1].strip(), "yellow")
+                elif text.startswith("/addmatch "): await add_match_manually(text.split(maxsplit=1)[1])
+                elif text.startswith("/removematch "): await remove_match_manually(text.split(maxsplit=1)[1])
+                elif text.startswith("/green "): set_match_status(text.split(maxsplit=1)[1], "green")
+                elif text.startswith("/red "): set_match_status(text.split(maxsplit=1)[1], "red")
+                elif text.startswith("/purple "): set_match_status(text.split(maxsplit=1)[1], "purple")
+                elif text.startswith("/yellow "): set_match_status(text.split(maxsplit=1)[1], "yellow")
     except Exception as e: print(f"⚠️ Errore comandi: {e}")
 
 async def main():
@@ -317,12 +341,12 @@ async def main():
             lines = match_str.split("\n")
             if len(lines) < 4: continue
             new_date = lines[0].replace("📅", "").strip(); new_time = lines[1].replace("🕒", "").strip()
-            new_vs = lines[2].replace("➡️", "").strip(); new_url = lines[3].replace("🔗", "").strip()
+            new_vs = lines[2].replace("➡️", "").strip(); new_url = normalize_link(lines[3].replace("🔗", "").strip())
             old_match_found = old_date = old_time = None
             for old in old_list:
                 o = old.split("\n")
                 if len(o) < 4: continue
-                if o[2].replace("➡️", "").strip() == new_vs and o[3].replace("🔗", "").strip() == new_url:
+                if o[2].replace("➡️", "").strip() == new_vs and normalize_link(o[3].replace("🔗", "").strip()) == new_url:
                     old_match_found = old; old_date = o[0].replace("📅", "").strip(); old_time = o[1].replace("🕒", "").strip(); break
             emoji = get_sport_emoji(team_name)
             if old_match_found is None:
@@ -357,16 +381,16 @@ async def main():
     def format_italian_date(d): return f"{ITALIAN_DAYS[d.weekday()]} {d.day} {ITALIAN_MONTHS[d.month-1]} {d.year}"
     start_str = format_italian_date(start_day); end_str = format_italian_date(end_day - timedelta(days=1))
     riepilogo = f"📅 *Calendario partite prossimi 28 giorni:*\n\n🌏 Dal *{start_str}* al *{end_str}*\n\n"
-    wx_dates, wx_codes, wx_max, wx_min, wx_sum, wx_prob = get_weather_data()
-    wx_map = {wx_dates[i]: (wx_codes[i], wx_max[i], wx_min[i], wx_sum[i], wx_prob[i]) for i in range(len(wx_dates))}
+    wx_dates, wx_codes, wx_max, wx_min = get_weather_data()
+    wx_map = {wx_dates[i]: (wx_codes[i], wx_max[i], wx_min[i]) for i in range(len(wx_dates))}
     empty_start = None
     for d in days_list:
         day_key = d.date(); day_label = format_italian_date(d)
         day_matches = sorted(matches_by_day[day_key], key=lambda x: x[0])
         d_str = d.strftime("%Y-%m-%d")
         if d_str in wx_map:
-            code, tmax, tmin, psum, pprob = wx_map[d_str]
-            desc = weather_description(code, psum, pprob)
+            code, tmax, tmin = wx_map[d_str]
+            desc = weather_description(code)
             tavg = round((tmin + tmax) / 2)
             meteo_str = f"{desc} / {tavg}°"
         else: meteo_str = "☁️ / --°"
@@ -380,7 +404,7 @@ async def main():
         riepilogo += f"───────────────────────────────\n📌 *{day_label}* ({meteo_str})\n\n"
         for _, team_name, emoji, match in day_matches:
             lines = match.split("\n")
-            link = lines[3].replace("🔗", "").strip()
+            link = normalize_link(lines[3].replace("🔗", "").strip())
             status_emoji = status_map.get(link, DEFAULT_STATUS)
             vs_line = lines[2].replace("➡️", "").strip()
             riepilogo += f"{emoji} *{team_name}*\n• {lines[1].replace('🕒','').strip()} — {vs_line} - {status_emoji}\n 🔗 {link}\n\n"
