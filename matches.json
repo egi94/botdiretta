@@ -341,5 +341,14 @@
         "https://www.diretta.it/partita/calcio/celle-varazze-pdYFaGrp/derthona-fbc-G4sOObCe/?mid=tpI4fACD",
         "https://www.diretta.it/partita/calcio/imperia-calcio-GWcvPy4o/millesimo-KnzvOyz2/?mid=n3zWcqJ5",
         "https://www.diretta.it/partita/calcio/asti-calcio-4Cl5oj8m/sestri-levante-OIfKN9XI/?mid=GxHeE43n"
-    ]
+    ],
+    "status": {
+        "https://divisionecalcioa5.it/partita/?matchid=4.3IT.KN.B.A24&season=2026-27&pid=29204": "🟢",
+        "https://www.diretta.it/partita/calcio/forli-fc-EF2WpDTI/vado-8WeFoDPP/?mid=dhYekTCk": "🟢",
+        "https://www.diretta.it/partita/calcio/ligorna-6uemfhd7/saluzzo-jksECGCp/?mid=r54LKLr9": "🟢",
+        "https://www.diretta.it/partita/basket/derthona-tortona-0OZBANVT/le-mans-Qqv37Lsk/?mid=Ui7I1BWs": "🟢",
+        "https://www.diretta.it/partita/calcio/pistoiese-v10H6bJI/sestri-levante-OIfKN9XI/?mid=Wvh5y5oJ": "🔴",
+        "https://www.diretta.it/partita/calcio/gubbio-nV1kjOZR/spezia-re6VD39b/?mid=QRY25u3m": "🟢",
+        "https://www.diretta.it/partita/calcio/sambenedettese-b5iXlOJt/vado-8WeFoDPP/?mid=SCGwRDVN": "🟢"
+    }
 }
