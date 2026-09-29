@@ -320,26 +320,18 @@ async def mod_match_manual_custom(raw_command: str):
         payload = raw_command.replace("/modmanual", "", 1).strip()
         payload = payload.replace("\n", " ").replace("\r", " ")
         payload = " ".join(payload.split())
-
-        if " - " in payload: parts = [p.strip() for p in payload.split(" - ")]
-        elif "|" in payload: parts = [p.strip() for p in payload.split("|")]
-        else: parts = [p.strip() for p in payload.split("-")]
-        parts = [p for p in parts if p]
+        parts = [p.strip() for p in re.split(r'\s+-\s+', payload) if p.strip()]
 
         home = away = datetime_raw = None
         new_link = None
 
-        if len(parts) == 2 and " vs " in parts[0].lower():
+        if len(parts) >= 2 and " vs " in parts[0].lower():
             m = re.split(r'\s+vs\s+', parts[0], flags=re.IGNORECASE)
             if len(m) == 2:
                 home, away = m[0].strip(), m[1].strip()
-                datetime_raw = parts[1]
-        elif len(parts) == 3 and " vs " in parts[0].lower():
-            m = re.split(r'\s+vs\s+', parts[0], flags=re.IGNORECASE)
-            if len(m) == 2:
-                home, away = m[0].strip(), m[1].strip()
-                datetime_raw = parts[1]
-                new_link = parts[2]
+                datetime_raw = parts[1] if len(parts) >= 2 else None
+                if len(parts) >= 3:
+                    new_link = parts[2]
         elif len(parts) >= 3:
             home = parts[0]
             away = parts[1]
@@ -348,6 +340,15 @@ async def mod_match_manual_custom(raw_command: str):
                 new_link = parts[3]
         else:
             send_telegram_message("❌ Formato errato\nUsa: /modmanual Casa - Trasferta - 07/04/2027 21:00 - https://...\nOppure: /modmanual Casa vs Trasferta - 07/04/2027 21:00 - https://...", auto_delete_sec=AUTO_DELETE_SECONDS); return
+
+        if datetime_raw and "http" in datetime_raw:
+            split_http = datetime_raw.split("http")
+            datetime_raw = split_http[0].strip().rstrip("-").strip()
+            if not new_link:
+                new_link = "http" + "http".join(split_http[1:])
+
+        if datetime_raw:
+            datetime_raw = datetime_raw.rstrip("-").strip()
 
         if not home or not away or not datetime_raw:
             send_telegram_message("❌ Formato errato\nUsa: /modmanual Casa - Trasferta - 07/04/2027 21:00 - https://...", auto_delete_sec=AUTO_DELETE_SECONDS); return
@@ -363,20 +364,15 @@ async def mod_match_manual_custom(raw_command: str):
             vs = get_match_vs(m)
             if not vs: continue
             if normalize_vs(vs) == vs_search:
-                found_idx = idx
-                old_match_str = m
-                break
+                found_idx = idx; old_match_str = m; break
         if found_idx == -1:
             for idx, m in enumerate(manual_list):
                 vs = get_match_vs(m)
                 if vs_search in normalize_vs(vs):
-                    found_idx = idx
-                    old_match_str = m
-                    break
+                    found_idx = idx; old_match_str = m; break
 
         if found_idx == -1:
-            send_telegram_message(f"❌ Partita manuale non trovata: {home} vs {away}", auto_delete_sec=AUTO_DELETE_SECONDS)
-            return
+            send_telegram_message(f"❌ Partita manuale non trovata: {home} vs {away}", auto_delete_sec=AUTO_DELETE_SECONDS); return
 
         lines = old_match_str.split("\n")
         old_date_str = lines[0].replace("📅","").strip() if len(lines)>0 else ""
@@ -386,7 +382,7 @@ async def mod_match_manual_custom(raw_command: str):
         formatted_date, formatted_time = format_match_date(datetime_raw)
         if all(day not in formatted_date for day in ITALIAN_DAYS):
             dt = None
-            for fmt in ("%d/%m/%Y %H:%M", "%d-%m-%Y %H:%M", "%d.%m.%Y %H:%M", "%d/%m/%Y %H", "%d/%m/%Y"):
+            for fmt in ("%d/%m/%Y %H:%M", "%d-%m-%Y %H:%M", "%d.%m.%Y %H:%M", "%d/%m/%Y %H", "%d/%m/%Y", "%d/%m/%Y %H:%M:%S"):
                 try: dt = datetime.strptime(datetime_raw, fmt); break
                 except: continue
             if dt:
