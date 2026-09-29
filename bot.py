@@ -1,4 +1,4 @@
-import os, json, asyncio, requests, threading
+import os, json, asyncio, requests, threading, re
 from playwright.async_api import async_playwright
 from dotenv import load_dotenv
 from datetime import datetime, timedelta
@@ -318,28 +318,46 @@ async def add_match_manual_custom(raw_command: str):
 async def mod_match_manual_custom(raw_command: str):
     try:
         payload = raw_command.replace("/modmanual", "", 1).strip()
+        payload = payload.replace("\n", " ").replace("\r", " ")
+        payload = " ".join(payload.split())
+
         if " - " in payload: parts = [p.strip() for p in payload.split(" - ")]
         elif "|" in payload: parts = [p.strip() for p in payload.split("|")]
+        else: parts = [p.strip() for p in payload.split("-")]
+        parts = [p for p in parts if p]
+
+        home = away = datetime_raw = None
+        new_link = None
+
+        if len(parts) == 2 and " vs " in parts[0].lower():
+            m = re.split(r'\s+vs\s+', parts[0], flags=re.IGNORECASE)
+            if len(m) == 2:
+                home, away = m[0].strip(), m[1].strip()
+                datetime_raw = parts[1]
+        elif len(parts) == 3 and " vs " in parts[0].lower():
+            m = re.split(r'\s+vs\s+', parts[0], flags=re.IGNORECASE)
+            if len(m) == 2:
+                home, away = m[0].strip(), m[1].strip()
+                datetime_raw = parts[1]
+                new_link = parts[2]
+        elif len(parts) >= 3:
+            home = parts[0]
+            away = parts[1]
+            datetime_raw = parts[2]
+            if len(parts) >= 4:
+                new_link = parts[3]
         else:
-            tmp = [p.strip() for p in payload.split("-")]
-            if len(tmp) > 3: parts = [tmp[0], tmp[1], tmp[2], "-".join(tmp[3:]).strip()]
-            else: parts = tmp
+            send_telegram_message("❌ Formato errato\nUsa: /modmanual Casa - Trasferta - 07/04/2027 21:00 - https://...\nOppure: /modmanual Casa vs Trasferta - 07/04/2027 21:00 - https://...", auto_delete_sec=AUTO_DELETE_SECONDS); return
 
-        if len(parts) < 3:
-            send_telegram_message("❌ Formato errato\nUsa: /modmanual Casa - Trasferta - 07/04/2027 21:00 - https://nuovo-link-opzionale", auto_delete_sec=AUTO_DELETE_SECONDS); return
+        if not home or not away or not datetime_raw:
+            send_telegram_message("❌ Formato errato\nUsa: /modmanual Casa - Trasferta - 07/04/2027 21:00 - https://...", auto_delete_sec=AUTO_DELETE_SECONDS); return
 
-        home, away, datetime_raw = parts[0], parts[1], parts[2]
-        new_link_raw = parts[3] if len(parts) >= 4 else None
-        new_link = normalize_link(new_link_raw) if new_link_raw else None
-
-        # normalizza vs ricercato
+        new_link = normalize_link(new_link) if new_link else None
         vs_search = normalize_vs(f"{home} vs {away}")
-
         data = load_matches()
         manual_list = data.get("manual", [])
         found_idx = -1
         old_match_str = None
-        old_date_str = old_time_str = old_link = ""
 
         for idx, m in enumerate(manual_list):
             vs = get_match_vs(m)
@@ -348,8 +366,6 @@ async def mod_match_manual_custom(raw_command: str):
                 found_idx = idx
                 old_match_str = m
                 break
-
-        # fallback ricerca parziale
         if found_idx == -1:
             for idx, m in enumerate(manual_list):
                 vs = get_match_vs(m)
@@ -367,11 +383,10 @@ async def mod_match_manual_custom(raw_command: str):
         old_time_str = lines[1].replace("🕒","").strip() if len(lines)>1 else ""
         old_link = get_match_key(old_match_str)
 
-        # parse nuova data
         formatted_date, formatted_time = format_match_date(datetime_raw)
         if all(day not in formatted_date for day in ITALIAN_DAYS):
             dt = None
-            for fmt in ("%d/%m/%Y %H:%M", "%d-%m-%Y %H:%M", "%d.%m.%Y %H:%M", "%d/%m/%Y %H", "%d/%m/%Y", "%d/%m/%Y %H:%M:%S"):
+            for fmt in ("%d/%m/%Y %H:%M", "%d-%m-%Y %H:%M", "%d.%m.%Y %H:%M", "%d/%m/%Y %H", "%d/%m/%Y"):
                 try: dt = datetime.strptime(datetime_raw, fmt); break
                 except: continue
             if dt:
@@ -381,35 +396,23 @@ async def mod_match_manual_custom(raw_command: str):
                 send_telegram_message(f"❌ Data non valida: {datetime_raw}", auto_delete_sec=AUTO_DELETE_SECONDS); return
 
         final_link = new_link if new_link else old_link
-        # mantieni home/away originali per non perdere maiuscole, ma usa quelli nuovi se vuoi
-        # qui uso quelli passati nel comando
         new_match_str = f"📅 {formatted_date}\n🕒 {formatted_time}\n➡️ {home} vs {away}\n🔗 {final_link}"
 
-        # aggiorna lista
         manual_list[found_idx] = new_match_str
         data["manual"] = manual_list
-
-        # se cambia link, migra stato e blacklist
-        if final_link!= old_link:
-            if old_link in data.get("status", {}):
-                data["status"][final_link] = data["status"][old_link]
-            if old_link in data.get("blacklist", []):
-                data["blacklist"].remove(old_link)
-
+        if final_link!= old_link and old_link in data.get("status", {}):
+            data["status"][final_link] = data["status"][old_link]
+        if final_link!= old_link and old_link in data.get("blacklist", []):
+            data["blacklist"].remove(old_link)
         save_matches(data)
 
-        # ICS nuovo
         ics_file = create_ics_event(home, away, formatted_date, formatted_time, final_link, get_sport_emoji(home) == "🤽‍♂️")
         if ics_file:
             try: send_ics_file(ics_file); os.remove(ics_file)
             except: pass
 
-        # Messaggio variazione come da scraping
         emoji = get_sport_emoji(home)
-        msg = f"⏰! VARIAZIONE! ⏰\n\n{emoji} Squadra: {home.upper()}\n"
-        msg += f"Vecchio: {old_date_str} {old_time_str}\n"
-        msg += f"Nuovo: {formatted_date} {formatted_time}\n"
-        msg += f"➡️ {home} vs {away}\n🔗 {final_link}"
+        msg = f"⏰! VARIAZIONE! ⏰\n\n{emoji} Squadra: {home.upper()}\nVecchio: {old_date_str} {old_time_str}\nNuovo: {formatted_date} {formatted_time}\n➡️ {home} vs {away}\n🔗 {final_link}"
         send_telegram_message(msg)
 
     except Exception as e:
