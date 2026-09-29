@@ -137,6 +137,7 @@ def get_match_key(match_str: str):
     except: pass
     return ""
 
+# === METEO SOLO EMOJI ===
 def get_weather_data():
     try:
         url = "https://api.open-meteo.com/v1/forecast?latitude=44.407&longitude=8.934&daily=weathercode,temperature_2m_max,temperature_2m_min&timezone=Europe/Rome"
@@ -146,15 +147,19 @@ def get_weather_data():
         return [], [], [], []
 
 def weather_description(code):
-    mapping = {
-        0: "Cielo sereno", 1: "Prevalentemente sereno", 2: "Parzialmente nuvoloso", 3: "Coperto",
-        45: "Nebbia", 48: "Nebbia con brina", 51: "Pioviggine leggera", 53: "Pioviggine moderata",
-        55: "Pioviggine intensa", 61: "Pioggia leggera", 63: "Pioggia moderata", 65: "Pioggia intensa",
-        71: "Neve leggera", 73: "Neve moderata", 75: "Neve intensa", 77: "Granelli di neve",
-        80: "Rovesci leggeri", 81: "Rovesci moderati", 82: "Rovesci violenti",
-        95: "Temporale", 96: "Temporale con grandine", 99: "Temporale con grandine intensa"
-    }
-    return mapping.get(code, "Condizioni variabili")
+    if code == 0:
+        return "☀️"
+    if code in (1, 2, 3):
+        return "☁️"
+    if code in (45, 48):
+        return "🌫️"
+    if code in (51, 53, 55, 56, 57, 61, 63, 65, 66, 67, 80, 81, 82):
+        return "🌧️"
+    if code in (71, 73, 75, 77, 85, 86):
+        return "❄️"
+    if code in (95, 96, 99):
+        return "⛈️"
+    return "☁️"
 
 async def extract_matches(url: str):
     print(f"🔎 Carico pagina: {url}")
@@ -478,7 +483,7 @@ async def main():
             tavg = round((tmin + tmax) / 2)
             meteo_str = f"{desc} / {tavg}°"
         else:
-            meteo_str = "Condizioni variabili / --°"
+            meteo_str = "☁️ / --°"
         if not day_matches:
             if empty_start is None:
                 empty_start = d
