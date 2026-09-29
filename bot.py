@@ -396,10 +396,14 @@ async def mod_match_manual_custom(raw_command: str):
 
         manual_list[found_idx] = new_match_str
         data["manual"] = manual_list
-        if final_link!= old_link and old_link in data.get("status", {}):
-            data["status"][final_link] = data["status"][old_link]
-        if final_link!= old_link and old_link in data.get("blacklist", []):
-            data["blacklist"].remove(old_link)
+        # FIX FIX: migra stato e rimuovi blacklist + aggiorna TUTTE le chiavi status con old_link
+        if final_link!= old_link:
+            if old_link in data.get("status", {}):
+                data["status"][final_link] = data["status"][old_link]
+            # mantiene anche la versione normalizzata
+            data["status"][normalize_link(final_link)] = data.get("status", {}).get(old_link, data.get("status", {}).get(normalize_link(old_link), DEFAULT_STATUS))
+            if old_link in data.get("blacklist", []):
+                data["blacklist"].remove(old_link)
         save_matches(data)
 
         ics_file = create_ics_event(home, away, formatted_date, formatted_time, final_link, get_sport_emoji(home) == "🤽‍♂️")
@@ -443,20 +447,37 @@ async def read_pending_commands():
             while i < len(raw_lines):
                 line=raw_lines[i].strip()
                 if not line: i+=1; continue
-                if line.lower().startswith(("/green ","/red ","/purple ","/yellow ","/removematch ","/addmatch ")) and "http" in line.lower():
-                    cmd, url_part = line.split(maxsplit=1)
-                    full_url=url_part.strip()
+                low_line = line.lower()
+                # FIX: include /modmanual e /addmanual nel ricucitura link spezzato
+                if low_line.startswith(("/green ","/red ","/purple ","/yellow ","/removematch ","/addmatch ","/addmanual ","/modmanual ")):
+                    full_cmd = line
+                    # caso tuo: "/modmanual... -" + riga dopo è il link
+                    if "http" not in low_line and i+1 < len(raw_lines) and "http" in raw_lines[i+1].lower():
+                        full_cmd = line + " " + raw_lines[i+1].strip()
+                        i+=1
+                    # ricuci eventuali &pid= spezzati su righe successive
                     j=i+1
                     while j < len(raw_lines):
                         nxt=raw_lines[j].strip()
                         if not nxt or nxt.startswith("/"): break
-                        if "&" in nxt or "=" in nxt or "season" in nxt or "pid" in nxt or "matchid" in nxt or (len(nxt)<60 and "?" in full_url):
-                            full_url+=nxt; j+=1
-                        else: break
-                    stitched.append(f"{cmd} {normalize_link(full_url)}")
+                        if "&" in nxt or "pid=" in nxt or "season=" in nxt or "match_id=" in nxt or "=" in nxt:
+                            # evita di attaccare altro comando
+                            if "http" not in nxt.lower():
+                                full_cmd += nxt
+                                j+=1
+                            else:
+                                break
+                        else:
+                            break
+                    stitched.append(full_cmd.strip())
                     i=j
                 else:
-                    stitched.append(line); i+=1
+                    # se è un link isolato ma il precedente era modmanual, saltalo (già ricucito)
+                    if "http" in low_line and stitched and stitched[-1].lower().startswith(("/modmanual","/addmanual")) and "http" not in stitched[-1].lower():
+                        stitched[-1] = stitched[-1] + " " + line.strip()
+                    else:
+                        stitched.append(line)
+                    i+=1
             for text in stitched:
                 low=text.lower()
                 if low.startswith("/green "): set_match_status(text.split(maxsplit=1)[1], "green")
