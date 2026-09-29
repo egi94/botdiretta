@@ -127,19 +127,15 @@ def get_weather_data():
 def weather_description(code, precip_sum=None, precip_prob=None):
     if precip_prob is None: precip_prob = 100
     if precip_sum is None: precip_sum = 10
-
     is_rain = code in (51, 53, 55, 56, 57, 61, 63, 65, 66, 67, 80, 81, 82)
     is_snow = code in (71, 73, 75, 77, 85, 86)
     is_storm = code in (95, 96, 99)
-
-    # FILTRO: se prob < 50% o < 1mm non è pioggia vera
     if is_rain or is_snow:
         if precip_prob < 50 or precip_sum < 1.0:
             return "☁️" if code!= 0 else "☀️"
     if is_storm:
         if precip_prob < 50 or precip_sum < 1.0:
             return "☁️"
-
     if code == 0: return "☀️"
     if code in (1, 2, 3): return "☁️"
     if code in (45, 48): return "🌫️"
@@ -290,20 +286,24 @@ async def remove_match_manually(link: str):
     if link not in data["blacklist"]: data["blacklist"].append(link)
     save_matches(data); send_telegram_message(f"❌ Partita rimossa:\n\n{removed_str or link}")
 
+# === PATCH MULTI-COMANDO PER RIGA ===
 async def read_pending_commands():
     try:
         url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/getUpdates?timeout=15"
         resp = requests.get(url, timeout=20).json()
         for update in resp.get("result", []):
             if "message" not in update or "text" not in update["message"]: continue
-            text = update["message"]["text"].strip()
-            if text.startswith("/addmanual "): await add_match_manual_custom(text)
-            elif text.startswith("/addmatch "): await add_match_manually(text.split(maxsplit=1)[1].strip())
-            elif text.startswith("/removematch "): await remove_match_manually(text.split(maxsplit=1)[1].strip())
-            elif text.startswith("/green "): set_match_status(text.split(maxsplit=1)[1].strip(), "green")
-            elif text.startswith("/red "): set_match_status(text.split(maxsplit=1)[1].strip(), "red")
-            elif text.startswith("/purple "): set_match_status(text.split(maxsplit=1)[1].strip(), "purple")
-            elif text.startswith("/yellow "): set_match_status(text.split(maxsplit=1)[1].strip(), "yellow")
+            full_text = update["message"]["text"].strip()
+            for text in full_text.splitlines():
+                text = text.strip()
+                if not text: continue
+                if text.startswith("/addmanual "): await add_match_manual_custom(text)
+                elif text.startswith("/addmatch "): await add_match_manually(text.split(maxsplit=1)[1].strip())
+                elif text.startswith("/removematch "): await remove_match_manually(text.split(maxsplit=1)[1].strip())
+                elif text.startswith("/green "): set_match_status(text.split(maxsplit=1)[1].strip(), "green")
+                elif text.startswith("/red "): set_match_status(text.split(maxsplit=1)[1].strip(), "red")
+                elif text.startswith("/purple "): set_match_status(text.split(maxsplit=1)[1].strip(), "purple")
+                elif text.startswith("/yellow "): set_match_status(text.split(maxsplit=1)[1].strip(), "yellow")
     except Exception as e: print(f"⚠️ Errore comandi: {e}")
 
 async def main():
@@ -340,7 +340,6 @@ async def main():
         updated[team_name] = new_list
     save_matches({"matches": updated, "manual": manual_list, "blacklist": blacklist, "status": status_map})
 
-    # RIEPILOGO
     data = load_matches(); all_matches = list(data.get("matches", {}).values()) + [data.get("manual", [])]
     all_matches_flat = [m for sublist in all_matches for m in sublist]
     today = datetime.now(); start_day = today.replace(hour=0, minute=0, second=0, microsecond=0); end_day = start_day + timedelta(days=28)
