@@ -327,7 +327,18 @@
         "📅 Sabato 19 Settembre 2026\n🕒 15:30\n➡️ Voitsberg vs A. Salzburg\n🔗 https://www.diretta.it/partita/calcio/a-salzburg-jVlL3vb5/voitsberg-QeqBIlht/?mid=j7Pj9UKP",
         "📅 Sabato 26 Settembre 2026\n🕒 14:30\n➡️ Pergolettese vs Trento\n🔗 https://www.diretta.it/partita/calcio/pergolettese-pvWU6W5U/trento-Gtx2eRRF/?mid=CGQwjqyQ",
         "📅 Sabato 26 Settembre 2026\n🕒 17:30\n➡️ Picerno vs Audace Cerignola\n🔗 https://www.diretta.it/partita/calcio/audace-cerignola-WtT3GZCk/picerno-Ee7aFeEG/?mid=Gj6OPc3F",
-        "📅 Venerdì 2 Ottobre 2026\n🕒 20:30\n➡️ CDM Futsal vs Messina Futsal\n🔗 https://divisionecalcioa5.it/partita/?match_id=4.3_IT.KN.B.A24&season=2026-27&pid=29204"
+        "📅 Venerdì 2 Ottobre 2026\n🕒 20:30\n➡️ CDM Futsal vs Messina Futsal\n🔗 https://divisionecalcioa5.it/partita/?match_id=4.3_IT.KN.B.A24&season=2026-27&pid=29204",
+        "📅 Venerdì 23 Ottobre 2026\n🕒 20:30\n➡️ CDM Futsal vs New Taranto\n🔗 https://divisionecalcioa5.it/partita/?match_id=6.2_IT.KN.B.A24&season=2026-27&pid=29204",
+        "📅 Venerdì 13 Novembre 2026\n🕒 20:30\n➡️ CDM Futsal vs Real Fabrica\n🔗 https://www.tuttocampo.it/Italia/CalcioA5SerieA2Elite/GironeBElite/Partita/8.2/cdm-futsal-real-fabrica",
+        "📅 Venerdì 27 Novembre 2026\n🕒 20:30\n➡️ CDM Futsal vs Laborvetro CLN CUS Molise\n🔗 https://www.tuttocampo.it/Italia/CalcioA5SerieA2Elite/GironeBElite/Partita/10.2/cdm-futsal-laborvetro-cln-cus-molise",
+        "📅 Venerdì 18 Dicembre 2026\n🕒 20:30\n➡️ CDM Futsal vs Eur\n🔗 https://www.tuttocampo.it/Italia/CalcioA5SerieA2Elite/GironeBElite/Partita/13.2/cdm-futsal-eur",
+        "📅 Venerdì 8 Gennaio 2027\n🕒 20:30\n➡️ CDM Futsal vs Sulmona Futsal\n🔗 https://www.tuttocampo.it/Italia/CalcioA5SerieA2Elite/GironeBElite/Partita/14.7/cdm-futsal-sulmona-futsal",
+        "📅 Venerdì 15 Gennaio 2027\n🕒 20:30\n➡️ CDM Futsal vs Formia Futsal\n🔗 https://www.tuttocampo.it/Italia/CalcioA5SerieA2Elite/GironeBElite/Partita/16.2/cdm-futsal-formia-futsal",
+        "📅 Venerdì 29 Gennaio 2027\n🕒 20:30\n➡️ CDM Futsal vs Pirossigeno Cosenza\n🔗 https://www.tuttocampo.it/Italia/CalcioA5SerieA2Elite/GironeBElite/Partita/18.6/cdm-futsal-pirossigeno-cosenza",
+        "📅 Venerdì 12 Febbraio 2027\n🕒 20:30\n➡️ CDM Futsal vs Lazio\n🔗 https://www.tuttocampo.it/Italia/CalcioA5SerieA2Elite/GironeBElite/Partita/20.4/cdm-futsal-lazio",
+        "📅 Venerdì 5 Marzo 2027\n🕒 20:30\n➡️ CDM Futsal vs Academy Pescara\n🔗 https://www.tuttocampo.it/Italia/CalcioA5SerieA2Elite/GironeBElite/Partita/22.1/cdm-futsal-academy-pescara",
+        "📅 Venerdì 19 Marzo 2027\n🕒 20:30\n➡️ CDM Futsal vs Cadi Antincendi Futura\n🔗 https://www.tuttocampo.it/Italia/CalcioA5SerieA2Elite/GironeBElite/Partita/24.6/cdm-futsal-cadi-antincendi-futura",
+        "📅 Martedì 6 Aprile 2027\n🕒 20:30\n➡️ CDM Futsal vs AC5\n🔗 https://www.tuttocampo.it/Italia/CalcioA5SerieA2Elite/GironeBElite/Partita/25.1/cdm-futsal-ac5"
     ],
     "blacklist": [
         "https://www.diretta.it/partita/calcio/cska-sofia-0xFNNECi/qarabag-agdam-Qgd3eSin/?mid=IibkzKD6",
@@ -360,6 +371,7 @@
         "https://www.diretta.it/partita/calcio/spezia-re6VD39b/vado-8WeFoDPP/?mid=x2IFMDdS": "🟢",
         "https://www.diretta.it/partita/calcio/juventus-pW9laeGO/treviso-Qucu3NNG/?mid=SOzOVg1n": "🟢",
         "https://www.diretta.it/partita/calcio/celle-varazze-pdYFaGrp/chisola-xYirU9HQ/?mid=65Km6MTF": "🔴",
-        "https://divisionecalcioa5.it/partita/?match_id=4.3_IT.KN.B.A24&season=2026-27&pid=29204": "🟢"
+        "https://divisionecalcioa5.it/partita/?match_id=4.3_IT.KN.B.A24&season=2026-27&pid=29204": "🟢",
+        "https://divisionecalcioa5.it/partita/?match_id=6.2_IT.KN.B.A24&season=2026-27&pid=29204": "🟡"
     }
 }
