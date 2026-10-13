@@ -347,7 +347,8 @@
         "📅 Martedì 6 Aprile 2027\n🕒 20:30\n➡️ CDM Futsal vs AC5\n🔗 https://www.tuttocampo.it/Italia/CalcioA5SerieA2Elite/GironeBElite/Partita/25.1/cdm-futsal-ac5",
         "📅 Venerdì 23 Ottobre 2026\n🕒 20:30\n➡️ CDM Futsal vs New Taranto\n🔗 https://www.tuttocampo.it/Italia/CalcioA5SerieA2Elite/GironeBElite/Partita/6.2/cdm-futsal-new-taranto",
         "📅 Sabato 3 Ottobre 2026\n🕒 17:30\n➡️ Arzignano vs Pergolettese\n🔗 https://www.diretta.it/partita/calcio/arzignano-I5Z9Cg0t/pergolettese-pvWU6W5U/?mid=AgHXvJSO",
-        "📅 Sabato 10 Ottobre 2026\n🕒 14:30\n➡️ Crotone vs Audace Cerignola\n🔗 https://www.diretta.it/partita/calcio/audace-cerignola-WtT3GZCk/crotone-d8H0SxkJ/?mid=jP43sNUH"
+        "📅 Sabato 10 Ottobre 2026\n🕒 14:30\n➡️ Crotone vs Audace Cerignola\n🔗 https://www.diretta.it/partita/calcio/audace-cerignola-WtT3GZCk/crotone-d8H0SxkJ/?mid=jP43sNUH",
+        "📅 Lunedì 19 Ottobre 2026\n🕒 20:30\n➡️ Juventus U23 vs Renate\n🔗 https://www.diretta.it/partita/calcio/juventus-pW9laeGO/renate-6TuwAQGc/?mid=nggw9xgt"
     ],
     "blacklist": [
         "https://www.diretta.it/partita/calcio/cska-sofia-0xFNNECi/qarabag-agdam-Qgd3eSin/?mid=IibkzKD6",
@@ -387,6 +388,8 @@
         "https://www.diretta.it/partita/pallanuoto/posillipo-bqJS0OCG/savona-zPvJ2pr4/?mid=4ttXpWtT": "🟢",
         "https://www.diretta.it/partita/calcio/celle-varazze-pdYFaGrp/sestri-levante-OIfKN9XI/?mid=x6hfMYJD": "🟢",
         "https://www.diretta.it/partita/calcio/audace-cerignola-WtT3GZCk/crotone-d8H0SxkJ/?mid=jP43sNUH": "🟢",
-        "https://www.diretta.it/partita/pallanuoto/civitavecchia-Agr2lave/rapallo-p6EJrVGM/?mid=AqzzWylA": "🟢"
+        "https://www.diretta.it/partita/pallanuoto/civitavecchia-Agr2lave/rapallo-p6EJrVGM/?mid=AqzzWylA": "🟢",
+        "https://www.diretta.it/partita/calcio/sampdoria-KWvL3Bg9/union-brescia-fLYHg0O7/?mid=GSe4gIsh": "🟢",
+        "https://www.diretta.it/partita/calcio/bra-pjfae9TJ/ligorna-6uemfhd7/?mid=K6kbMgyB": "🟢"
     }
 }
