@@ -263,6 +263,9 @@
         "CDM FUTSAL GENOVA": [],
         "RAPALLO PALLANUOTO FEMMINILE": [
             "📅 Mercoledì 21 Ottobre 2026\n🕒 20:00\n➡️ Rapallo D vs Ekipe Orizzonte D\n🔗 https://www.diretta.it/partita/pallanuoto/ekipe-orizzonte-QahH5CeH/rapallo-p6EJrVGM/?mid=bsllpS8K",
+            "📅 Sabato 7 Novembre 2026\n🕒 18:00\n➡️ Rapallo D vs Ferencvarosi D\n🔗 https://www.diretta.it/partita/pallanuoto/ferencvarosi-noN6xZXl/rapallo-p6EJrVGM/?mid=CKjUU6fB",
+            "📅 Sabato 7 Novembre 2026\n🕒 18:00\n➡️ Rapallo D vs Sabadell D\n🔗 https://www.diretta.it/partita/pallanuoto/rapallo-p6EJrVGM/sabadell-8jzCJxP9/?mid=fRQ1q694",
+            "📅 Sabato 7 Novembre 2026\n🕒 18:00\n➡️ Rapallo D vs Roma D\n🔗 https://www.diretta.it/partita/pallanuoto/rapallo-p6EJrVGM/roma-Gpi5lwqC/?mid=8lXHuO8T",
             "📅 Sabato 7 Novembre 2026\n🕒 19:00\n➡️ Rapallo D vs Plebiscito Padova D\n🔗 https://www.diretta.it/partita/pallanuoto/plebiscito-padova-feAChYKi/rapallo-p6EJrVGM/?mid=809LVmBO",
             "📅 Sabato 9 Gennaio 2027\n🕒 00:00\n➡️ Rapallo D vs Trieste D\n🔗 https://www.diretta.it/partita/pallanuoto/rapallo-p6EJrVGM/trieste-ngDrhMGB/?mid=xfdoiew2",
             "📅 Sabato 16 Gennaio 2027\n🕒 00:00\n➡️ Rapallo D vs Ancona D\n🔗 https://www.diretta.it/partita/pallanuoto/ancona-4UNwg215/rapallo-p6EJrVGM/?mid=trsCRyFE",
@@ -347,7 +350,8 @@
         "📅 Sabato 10 Ottobre 2026\n🕒 14:30\n➡️ Crotone vs Audace Cerignola\n🔗 https://www.diretta.it/partita/calcio/audace-cerignola-WtT3GZCk/crotone-d8H0SxkJ/?mid=jP43sNUH",
         "📅 Lunedì 19 Ottobre 2026\n🕒 20:30\n➡️ Juventus U23 vs Renate\n🔗 https://www.diretta.it/partita/calcio/juventus-pW9laeGO/renate-6TuwAQGc/?mid=nggw9xgt",
         "📅 Sabato 17 Ottobre 2026\n🕒 20:30\n➡️ Sassari vs Cento\n🔗 https://www.diretta.it/partita/basket/sassari-CQMh2ve4/tramec-cento-2smXlHO8/?mid=WWJ0nnqh",
-        "📅 Venerdì 16 Ottobre 2026\n🕒 20:00\n➡️ Poitiers vs Chalons-Reims\n🔗 https://www.diretta.it/partita/basket/poitiers-MX45Mxd7/reims-Aqs9QejU/?mid=00P5qi0d"
+        "📅 Venerdì 16 Ottobre 2026\n🕒 20:00\n➡️ Poitiers vs Chalons-Reims\n🔗 https://www.diretta.it/partita/basket/poitiers-MX45Mxd7/reims-Aqs9QejU/?mid=00P5qi0d",
+        "📅 Lunedì 30 Novembre 2026\n🕒 20:45\n➡️ Cagliari vs Milan\n🔗 https://www.diretta.it/partita/calcio/ac-milan-8Sa8HInO/cagliari-SCGVmKHb/?mid=vDDqlbS9"
     ],
     "blacklist": [
         "https://www.diretta.it/partita/calcio/cska-sofia-0xFNNECi/qarabag-agdam-Qgd3eSin/?mid=IibkzKD6",
@@ -394,6 +398,7 @@
         "https://www.diretta.it/partita/pallanuoto/oradea-K0bGcvQ2/pro-recco-2BtB46Di/?mid=C46Bq5Yp": "🟢",
         "https://www.diretta.it/partita/basket/sassari-CQMh2ve4/tramec-cento-2smXlHO8/?mid=WWJ0nnqh": "🟢",
         "https://www.diretta.it/partita/basket/poitiers-MX45Mxd7/reims-Aqs9QejU/?mid=00P5qi0d": "🟢",
-        "https://www.diretta.it/partita/calcio/entella-pYWhmj9S/vicenza-2y5pczo3/?mid=tlCJkzsH": "🟢"
+        "https://www.diretta.it/partita/calcio/entella-pYWhmj9S/vicenza-2y5pczo3/?mid=tlCJkzsH": "🟢",
+        "https://www.diretta.it/partita/calcio/ac-milan-8Sa8HInO/cagliari-SCGVmKHb/?mid=vDDqlbS9": "🟢"
     }
 }
