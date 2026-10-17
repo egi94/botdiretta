@@ -404,7 +404,6 @@
         "📅 Venerdì 5 Marzo 2027\n🕒 20:30\n➡️ CDM Futsal vs Academy Pescara\n🔗 https://www.tuttocampo.it/Italia/CalcioA5SerieA2Elite/GironeBElite/Partita/22.1/cdm-futsal-academy-pescara",
         "📅 Venerdì 19 Marzo 2027\n🕒 20:30\n➡️ CDM Futsal vs Cadi Antincendi Futura\n🔗 https://www.tuttocampo.it/Italia/CalcioA5SerieA2Elite/GironeBElite/Partita/24.6/cdm-futsal-cadi-antincendi-futura",
         "📅 Martedì 6 Aprile 2027\n🕒 20:30\n➡️ CDM Futsal vs AC5\n🔗 https://www.tuttocampo.it/Italia/CalcioA5SerieA2Elite/GironeBElite/Partita/25.1/cdm-futsal-ac5",
-        "📅 Venerdì 23 Ottobre 2026\n🕒 20:30\n➡️ CDM Futsal vs New Taranto\n🔗 https://www.tuttocampo.it/Italia/CalcioA5SerieA2Elite/GironeBElite/Partita/6.2/cdm-futsal-new-taranto",
         "📅 Sabato 3 Ottobre 2026\n🕒 17:30\n➡️ Arzignano vs Pergolettese\n🔗 https://www.diretta.it/partita/calcio/arzignano-I5Z9Cg0t/pergolettese-pvWU6W5U/?mid=AgHXvJSO",
         "📅 Sabato 10 Ottobre 2026\n🕒 14:30\n➡️ Crotone vs Audace Cerignola\n🔗 https://www.diretta.it/partita/calcio/audace-cerignola-WtT3GZCk/crotone-d8H0SxkJ/?mid=jP43sNUH",
         "📅 Lunedì 19 Ottobre 2026\n🕒 20:30\n➡️ Juventus U23 vs Renate\n🔗 https://www.diretta.it/partita/calcio/juventus-pW9laeGO/renate-6TuwAQGc/?mid=nggw9xgt",
@@ -424,7 +423,8 @@
         "https://www.diretta.it/partita/calcio/celle-varazze-pdYFaGrp/derthona-fbc-G4sOObCe/?mid=tpI4fACD",
         "https://www.diretta.it/partita/calcio/imperia-calcio-GWcvPy4o/millesimo-KnzvOyz2/?mid=n3zWcqJ5",
         "https://www.diretta.it/partita/calcio/asti-calcio-4Cl5oj8m/sestri-levante-OIfKN9XI/?mid=GxHeE43n",
-        "https://www.diretta.it/partita/calcio/latina-ju7YRpCf/spezia-hSPbsxPs/?mid=hSViu0io"
+        "https://www.diretta.it/partita/calcio/latina-ju7YRpCf/spezia-hSPbsxPs/?mid=hSViu0io",
+        "https://www.tuttocampo.it/Italia/CalcioA5SerieA2Elite/GironeBElite/Partita/6.2/cdm-futsal-new-taranto"
     ],
     "status": {
         "https://divisionecalcioa5.it/partita/?matchid=4.3IT.KN.B.A24&season=2026-27&pid=29204": "🟢",
@@ -458,6 +458,8 @@
         "https://www.diretta.it/partita/basket/sassari-CQMh2ve4/tramec-cento-2smXlHO8/?mid=WWJ0nnqh": "🟢",
         "https://www.diretta.it/partita/basket/poitiers-MX45Mxd7/reims-Aqs9QejU/?mid=00P5qi0d": "🟢",
         "https://www.diretta.it/partita/calcio/entella-pYWhmj9S/vicenza-2y5pczo3/?mid=tlCJkzsH": "🟢",
-        "https://www.diretta.it/partita/calcio/ac-milan-8Sa8HInO/cagliari-SCGVmKHb/?mid=vDDqlbS9": "🟢"
+        "https://www.diretta.it/partita/calcio/ac-milan-8Sa8HInO/cagliari-SCGVmKHb/?mid=vDDqlbS9": "🟢",
+        "https://www.diretta.it/partita/basket/bcc-derthona-basket-0bC1jOwe/fribourg-K61fOj6J/?mid=8Aj4654C": "🟢",
+        "https://www.diretta.it/partita/basket/azs-poznan-U7o8wGOt/bcc-derthona-basket-0bC1jOwe/?mid=QiYh83YG": "🟢"
     }
 }
