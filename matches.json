@@ -391,7 +391,8 @@
         "📅 Lunedì 19 Ottobre 2026\n🕒 20:30\n➡️ Juventus U23 vs Renate\n🔗 https://www.diretta.it/partita/calcio/juventus-pW9laeGO/renate-6TuwAQGc/?mid=nggw9xgt",
         "📅 Sabato 17 Ottobre 2026\n🕒 20:30\n➡️ Sassari vs Cento\n🔗 https://www.diretta.it/partita/basket/sassari-CQMh2ve4/tramec-cento-2smXlHO8/?mid=WWJ0nnqh",
         "📅 Venerdì 16 Ottobre 2026\n🕒 20:00\n➡️ Poitiers vs Chalons-Reims\n🔗 https://www.diretta.it/partita/basket/poitiers-MX45Mxd7/reims-Aqs9QejU/?mid=00P5qi0d",
-        "📅 Lunedì 30 Novembre 2026\n🕒 20:45\n➡️ Cagliari vs Milan\n🔗 https://www.diretta.it/partita/calcio/ac-milan-8Sa8HInO/cagliari-SCGVmKHb/?mid=vDDqlbS9"
+        "📅 Lunedì 30 Novembre 2026\n🕒 20:45\n➡️ Cagliari vs Milan\n🔗 https://www.diretta.it/partita/calcio/ac-milan-8Sa8HInO/cagliari-SCGVmKHb/?mid=vDDqlbS9",
+        "📅 Sabato 24 Ottobre 2026\n🕒 20:00\n➡️ I B MCKL KK RUDAR PLJEVLJA vs OKK BALKANSKI RIS PLAV\n🔗 https://kscg.apps.srarena.io/basketball/latest/gametracker/#/?eventId=4cb1b0f8-a202-42c1-b4a2-0f746511732d&language=en_GB"
     ],
     "blacklist": [
         "https://www.diretta.it/partita/calcio/cska-sofia-0xFNNECi/qarabag-agdam-Qgd3eSin/?mid=IibkzKD6",
@@ -446,6 +447,7 @@
         "https://www.diretta.it/partita/pallanuoto/ancona-4UNwg215/sori-raKVaiK8/?mid=QepmQ6Hl": "🟢",
         "https://divisionecalcioa5.it/partita/?matchid=6.2IT.KN.B.A24&season=2026-27&pid=29204": "🟢",
         "https://www.diretta.it/partita/pallanuoto/ekipe-orizzonte-QahH5CeH/rapallo-p6EJrVGM/?mid=bsllpS8K": "🟢",
-        "https://www.diretta.it/partita/basket/bcc-derthona-basket-0bC1jOwe/landerneau-bretagne-44OfiPja/?mid=AwPLOnKt": "🟢"
+        "https://www.diretta.it/partita/basket/bcc-derthona-basket-0bC1jOwe/landerneau-bretagne-44OfiPja/?mid=AwPLOnKt": "🟢",
+        "https://kscg.apps.srarena.io/basketball/latest/gametracker/#/?eventId=4cb1b0f8-a202-42c1-b4a2-0f746511732d&language=en_GB": "🟢"
     }
 }
