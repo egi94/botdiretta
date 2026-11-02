@@ -368,7 +368,8 @@
         "📅 Sabato 17 Ottobre 2026\n🕒 20:30\n➡️ Sassari vs Cento\n🔗 https://www.diretta.it/partita/basket/sassari-CQMh2ve4/tramec-cento-2smXlHO8/?mid=WWJ0nnqh",
         "📅 Venerdì 16 Ottobre 2026\n🕒 20:00\n➡️ Poitiers vs Chalons-Reims\n🔗 https://www.diretta.it/partita/basket/poitiers-MX45Mxd7/reims-Aqs9QejU/?mid=00P5qi0d",
         "📅 Lunedì 30 Novembre 2026\n🕒 20:45\n➡️ Cagliari vs Milan\n🔗 https://www.diretta.it/partita/calcio/ac-milan-8Sa8HInO/cagliari-SCGVmKHb/?mid=vDDqlbS9",
-        "📅 Sabato 24 Ottobre 2026\n🕒 20:00\n➡️ I B MCKL KK RUDAR PLJEVLJA vs OKK BALKANSKI RIS PLAV\n🔗 https://kscg.apps.srarena.io/basketball/latest/gametracker/#/?eventId=4cb1b0f8-a202-42c1-b4a2-0f746511732d&language=en_GB"
+        "📅 Sabato 24 Ottobre 2026\n🕒 20:00\n➡️ I B MCKL KK RUDAR PLJEVLJA vs OKK BALKANSKI RIS PLAV\n🔗 https://kscg.apps.srarena.io/basketball/latest/gametracker/#/?eventId=4cb1b0f8-a202-42c1-b4a2-0f746511732d&language=en_GB",
+        "📅 Domenica 22 Novembre 2026\n🕒 15:00\n➡️ Sassuolo vs Genoa\n🔗 https://www.diretta.it/partita/calcio/genoa-d0PJxeie/sassuolo-QDdvI0zl/?mid=6aFyjKcc"
     ],
     "blacklist": [
         "https://www.diretta.it/partita/calcio/cska-sofia-0xFNNECi/qarabag-agdam-Qgd3eSin/?mid=IibkzKD6",
@@ -428,6 +429,17 @@
         "https://www.diretta.it/partita/calcio/sampdoria-KWvL3Bg9/sudtirol-MmafcjLi/?mid=KGrZdC5s": "🔴",
         "https://www.diretta.it/partita/pallanuoto/brescia-dYuF3QSc/pro-recco-2BtB46Di/?mid=YkyuqgqQ": "🟢",
         "https://www.diretta.it/partita/pallanuoto/pro-recco-2BtB46Di/radnicki-Q3hc5Vub/?mid=zwUxYmhM": "🟢",
-        "https://www.diretta.it/partita/calcio/cittadella-Op6tbGVd/entella-pYWhmj9S/?mid=0fpkgU46": "🟢"
+        "https://www.diretta.it/partita/calcio/cittadella-Op6tbGVd/entella-pYWhmj9S/?mid=0fpkgU46": "🟢",
+        "https://www.diretta.it/partita/calcio/bra-pjfae9TJ/sestri-levante-OIfKN9XI/?mid=K0f8NxHt": "🟢",
+        "https://www.diretta.it/partita/calcio/latina-CrARgwBF/vado-8WeFoDPP/?mid=fup6t8m1": "🟢",
+        "https://www.diretta.it/partita/calcio/genoa-d0PJxeie/sassuolo-QDdvI0zl/?mid=6aFyjKcc": "🟢",
+        "https://www.diretta.it/partita/calcio/atalanta-8C9JjMXu/inter-Iw7eKK25/?mid=jkjRvZXb": "🟢",
+        "https://www.diretta.it/partita/calcio/lazio-URcSl02h/torino-MZFZnvX4/?mid=r9M4t7Q0": "🟢",
+        "https://www.diretta.it/partita/calcio/pineto-S8fKXrK7/spezia-re6VD39b/?mid=beVIv7ZA": "🟢",
+        "https://www.diretta.it/partita/calcio/napoli-69Dxbc61/sassuolo-QDdvI0zl/?mid=zqJdrTel": "🟢",
+        "https://www.diretta.it/partita/calcio/genoa-d0PJxeie/torino-MZFZnvX4/?mid=hfAwFRWP": "🟢",
+        "https://www.diretta.it/partita/calcio/bologna-0M9xNN8N/como-ttyLthOA/?mid=nebCGv8U": "🟢",
+        "https://www.diretta.it/partita/calcio/folgore-caratese-QJdMoMJ8/juventus-pW9laeGO/?mid=4Kp8PXd3": "🟢",
+        "https://www.diretta.it/partita/calcio/guidonia-1937-O44quWxq/spezia-re6VD39b/?mid=23ANCiof": "🟢"
     }
 }
