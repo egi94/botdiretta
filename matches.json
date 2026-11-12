@@ -222,7 +222,7 @@
         ],
         "CDM FUTSAL GENOVA": [],
         "RAPALLO PALLANUOTO FEMMINILE": [
-            "📅 Sabato 14 Novembre 2026\n🕒 18:00\n➡️ Rapallo D vs Roma D\n🔗 https://www.diretta.it/partita/pallanuoto/rapallo-p6EJrVGM/roma-Gpi5lwqC/?mid=2iU9spvH",
+            "📅 Sabato 14 Novembre 2026\n🕒 18:30\n➡️ Rapallo D vs Roma D\n🔗 https://www.diretta.it/partita/pallanuoto/rapallo-p6EJrVGM/roma-Gpi5lwqC/?mid=2iU9spvH",
             "📅 Sabato 28 Novembre 2026\n🕒 18:00\n➡️ Rapallo D vs Ferencvarosi D\n🔗 https://www.diretta.it/partita/pallanuoto/ferencvarosi-noN6xZXl/rapallo-p6EJrVGM/?mid=dUqEYlen",
             "📅 Sabato 9 Gennaio 2027\n🕒 00:00\n➡️ Rapallo D vs Sabadell D\n🔗 https://www.diretta.it/partita/pallanuoto/rapallo-p6EJrVGM/sabadell-8jzCJxP9/?mid=fRQ1q694",
             "📅 Mercoledì 13 Gennaio 2027\n🕒 00:00\n➡️ Rapallo D vs Trieste D\n🔗 https://www.diretta.it/partita/pallanuoto/rapallo-p6EJrVGM/trieste-ngDrhMGB/?mid=xfdoiew2",
@@ -359,7 +359,9 @@
         "📅 Domenica 6 Dicembre 2026\n🕒 12:30\n➡️ Genoa vs Torino\n🔗 https://www.diretta.it/partita/calcio/genoa-d0PJxeie/torino-MZFZnvX4/?mid=hfAwFRWP",
         "📅 Domenica 6 Dicembre 2026\n🕒 15:00\n➡️ Lazio vs Atalanta\n🔗 https://www.diretta.it/partita/calcio/atalanta-8C9JjMXu/lazio-URcSl02h/?mid=djaH7qPa",
         "📅 Sabato 12 Dicembre 2026\n🕒 20:45\n➡️ Como vs Bologna\n🔗 https://www.diretta.it/partita/calcio/bologna-0M9xNN8N/como-ttyLthOA/?mid=nebCGv8U",
-        "📅 Martedì 10 Novembre 2026\n🕒 19:00\n➡️ Pamplona vs Eibar\n🔗 https://www.diretta.it/partita/calcio/eibar-OEsEpExD/pamplona-UsILjdKI/?mid=Wx31QD9m"
+        "📅 Martedì 10 Novembre 2026\n🕒 19:00\n➡️ Pamplona vs Eibar\n🔗 https://www.diretta.it/partita/calcio/eibar-OEsEpExD/pamplona-UsILjdKI/?mid=Wx31QD9m",
+        "📅 Giovedì 12 Novembre 2026\n🕒 18:30\n➡️ Puertollano C.F. vs Albacete\n🔗 https://www.diretta.it/partita/calcio/albacete-UirAofN6/puertollano-c-f-xI8msoiQ/?mid=A91hgO0l",
+        "📅 Venerdì 13 Novembre 2026\n🕒 20:30\n➡️ Saintes vs Cherbourg\n🔗 https://www.diretta.it/partita/pallamano/cherbourg-xA2rgdYk/saintes-42XF3dbr/?mid=4Wx3EiLk"
     ],
     "blacklist": [
         "https://www.diretta.it/partita/calcio/cska-sofia-0xFNNECi/qarabag-agdam-Qgd3eSin/?mid=IibkzKD6",
@@ -434,6 +436,8 @@
         "https://www.diretta.it/partita/calcio/atalanta-8C9JjMXu/lazio-URcSl02h/?mid=djaH7qPa": "🟢",
         "https://www.diretta.it/partita/basket/aris-fND8BWOm/derthona-tortona-0OZBANVT/?mid=x8cJbF7t": "🟢",
         "https://www.diretta.it/partita/pallanuoto/ferencvarosi-noN6xZXl/rapallo-p6EJrVGM/?mid=dUqEYlen": "🟢",
-        "https://www.diretta.it/partita/pallanuoto/rapallo-p6EJrVGM/roma-Gpi5lwqC/?mid=2iU9spvH": "🟢"
+        "https://www.diretta.it/partita/pallanuoto/rapallo-p6EJrVGM/roma-Gpi5lwqC/?mid=2iU9spvH": "🟢",
+        "https://www.diretta.it/partita/calcio/albacete-UirAofN6/puertollano-c-f-xI8msoiQ/?mid=A91hgO0l": "🟢",
+        "https://www.diretta.it/partita/pallamano/cherbourg-xA2rgdYk/saintes-42XF3dbr/?mid=4Wx3EiLk": "🟢"
     }
 }
