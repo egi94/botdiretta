@@ -9,6 +9,7 @@ TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 TEAMS = json.loads(os.getenv("TEAMS", "{}"))
 MATCHES_FILE = "matches.json"
+LAST_UPDATE_FILE = "last_update_id.txt"
 ITALIAN_DAYS = ["Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì", "Sabato", "Domenica"]
 ITALIAN_MONTHS = ["Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno", "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre"]
 
@@ -69,6 +70,7 @@ def send_telegram_message(text: str, auto_delete_sec=None):
         return None
 
 def send_long_message(text: str, max_len=3500):
+    # FIX: numerazione (1/N) sempre, anche per il riepilogo 28 giorni, come per /allgreen
     if len(text) <= max_len:
         send_telegram_message(text)
         return
@@ -112,7 +114,6 @@ def send_ics_file(file_path):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendDocument"
     with open(file_path, "rb") as f: requests.post(url, data={"chat_id": CHAT_ID}, files={"document": f})
 
-# --- SOLO AGGIUNTA FOTO, NON TOCCA LA LOGICA ESISTENTE ---
 def send_telegram_photo(file_path, caption=""):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendPhoto"
     try:
@@ -125,6 +126,23 @@ def send_telegram_photo(file_path, caption=""):
     except Exception as e:
         print(f"❌ Errore foto: {e}")
         return None
+
+# --- FIX OFFSET COMANDI ---
+def _load_last_update_id():
+    try:
+        if os.path.exists(LAST_UPDATE_FILE):
+            with open(LAST_UPDATE_FILE, "r") as f:
+                return int(f.read().strip() or 0)
+    except:
+        pass
+    return 0
+
+def _save_last_update_id(uid: int):
+    try:
+        with open(LAST_UPDATE_FILE, "w") as f:
+            f.write(str(uid))
+    except Exception as e:
+        print(f"⚠️ Errore salvataggio last_update_id: {e}")
 
 def create_calendar_image(mode="all", title="TUTTE LE PARTITE"):
     data = load_matches()
@@ -156,7 +174,10 @@ def create_calendar_image(mode="all", title="TUTTE LE PARTITE"):
         time_str = lines[1].replace("🕒", "").strip()
         matches_by_day.setdefault(dt.date(), []).append((time_str, vs, emoji))
         total += 1
-    W, H = 1400, 950
+    # FIX LUNEDI: parti dal Lunedi della settimana corrente, perpetuo
+    first_monday = today - timedelta(days=today.weekday())
+    NUM_WEEKS = 5
+    W, H = 1400, 1125
     img = Image.new("RGB", (W, H), "white")
     draw = ImageDraw.Draw(img)
     try:
@@ -183,7 +204,6 @@ def create_calendar_image(mode="all", title="TUTTE LE PARTITE"):
     else:
         draw.rounded_rectangle([30, 85, 55, 105], radius=5, fill="#22c55e")
         draw.text((65, 83), "Confermata", fill="black", font=font_match)
-    start = today
     cell_w = (W - 60) // 7
     cell_h = 175
     top = 125
@@ -192,12 +212,17 @@ def create_calendar_image(mode="all", title="TUTTE LE PARTITE"):
         draw.text((30 + col * cell_w + 10, top), h, fill="#666666", font=font_day)
     top += 32
     colors = {"🟢": "#22c55e", "🟡": "#eab308", "🔴": "#ef4444", "🟣": "#a855f7"}
-    for week in range(4):
+    for week in range(NUM_WEEKS):
         for col in range(7):
-            day = start + timedelta(days=week * 7 + col)
+            day = first_monday + timedelta(days=week * 7 + col)
             x = 30 + col * cell_w
             y = top + week * cell_h
             is_today = day.date() == datetime.now().date()
+            is_in_range = today.date() <= day.date() < (today + timedelta(days=28)).date()
+            if not is_in_range:
+                draw.rectangle([x, y, x + cell_w - 5, y + cell_h - 5], outline="#EEEEEE", width=1, fill="#F5F5F5")
+                draw.text((x + 8, y + 6), f"{day.day} {ITALIAN_MONTHS[day.month-1][:3]}", fill="#BBBBBB", font=font_day)
+                continue
             draw.rectangle([x, y, x + cell_w - 5, y + cell_h - 5], outline="#4285F4" if is_today else "#DDDDDD", width=2 if is_today else 1, fill="#F8F9FA" if is_today else "white")
             draw.text((x + 8, y + 6), f"{day.day} {ITALIAN_MONTHS[day.month-1][:3]}", fill="black", font=font_day)
             day_matches = sorted(matches_by_day.get(day.date(), []))
@@ -216,7 +241,6 @@ def create_calendar_image(mode="all", title="TUTTE LE PARTITE"):
     filename = f"calendario_{mode}.png"
     img.save(filename)
     return filename, total
-# --- FINE AGGIUNTA FOTO ---
 
 def load_matches():
     if not os.path.exists(MATCHES_FILE): return {"matches": {}, "manual": [], "blacklist": [], "status": {}}
@@ -411,6 +435,7 @@ def clear_match_status(inp: str):
     send_telegram_message(f"✅ Stato rimosso, torna a {DEFAULT_STATUS}\n{target_vs or target_link}", auto_delete_sec=AUTO_DELETE_SECONDS)
 
 def list_matches_by_status(color: str):
+    # Questa funzione ora parte SOLO se chiamata da /allgreen, mai di default
     data = load_matches()
     status_map = data.get("status", {})
     wanted_emoji = STATUS_EMOJI.get(color, DEFAULT_STATUS)
@@ -491,7 +516,6 @@ def list_matches_by_status(color: str):
         send_telegram_message(f"Nessuna partita futura con stato {wanted_emoji} {color.upper()}", auto_delete_sec=AUTO_DELETE_SECONDS)
         return
     filtered.sort(key=lambda x: x[0])
-    # --- LOGICA TESTO INVARIATA ---
     if color == "green":
         title = f"✅ PARTITE CONFERMATE: ({len(filtered)})"
     else:
@@ -514,7 +538,7 @@ def list_matches_by_status(color: str):
             time.sleep(0.5)
     if batch.strip():
         send_telegram_message(f"({batch_idx}/{total_batches})\n{batch.strip()}")
-    # --- AGGIUNTA SOLO FOTO A PARTE, SOLO PER GREEN, NON ALTERA LA LISTA ---
+    # Foto green solo quando /allgreen la triggera, come messaggio a parte dopo la lista
     if color == "green":
         try:
             time.sleep(0.5)
@@ -730,9 +754,15 @@ async def remove_match_manually(link: str):
 
 async def read_pending_commands():
     try:
-        url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/getUpdates?timeout=15"
+        # FIX: offset = solo comandi NUOVI, mai più replay del vecchio /allgreen
+        last_id = _load_last_update_id()
+        url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/getUpdates?timeout=15&offset={last_id + 1 if last_id else 0}"
         resp = requests.get(url, timeout=20).json()
+        max_id = last_id
         for update in resp.get("result", []):
+            uid = update.get("update_id", 0)
+            if uid > max_id:
+                max_id = uid
             if "message" not in update or "text" not in update["message"]: continue
             full_text = update["message"]["text"]
             raw_lines = full_text.splitlines()
@@ -794,6 +824,9 @@ async def read_pending_commands():
                 elif text.startswith("/modmanual "): await mod_match_manual_custom(text)
                 elif text.startswith("/addmatch "): await add_match_manually(text.split(maxsplit=1)[1])
                 elif text.startswith("/removematch "): await remove_match_manually(text.split(maxsplit=1)[1])
+        # Salva offset SOLO dopo aver processato tutto, così al prossimo giro non ripete
+        if max_id > last_id:
+            _save_last_update_id(max_id)
     except Exception as e: print(f"⚠️ Errore comandi: {e}")
 
 async def main():
@@ -882,9 +915,9 @@ async def main():
     riepilogo+=f"Nuove partite trovate: {total_new_matches}\n"
     riepilogo+=f"⏰ {timestamp.strftime('%H:%M')} | {timestamp.strftime('%A %d %B')}"
     riepilogo = riepilogo.replace("*", "")
-    # LOGICA TESTO INVARIATA
+    # LOGICA TESTO INVARIATA, solo numerazione (1/N) via send_long_message
     send_long_message(riepilogo)
-    # --- AGGIUNTA SOLO FOTO A PARTE, DOPO IL TESTO ---
+    # --- ULTIMI 2 MESSAGGI DELLA RUN, IMMEDIATAMENTE DOPO IL RIEPILOGO ---
     try:
         time.sleep(0.5)
         img_all, tot_all = create_calendar_image(mode="all", title="TUTTE LE PARTITE")
@@ -898,5 +931,7 @@ async def main():
         print(f"❌ Errore foto calendario: {e}")
 
 if __name__ == "__main__":
-    asyncio.run(read_pending_commands())
+    # FIX ORDINE: prima main (riepilogo + 2 foto per ultime), poi comandi
+    # Cosi /allgreen non arriva mai prima del riepilogo e mai di default
     asyncio.run(main())
+    asyncio.run(read_pending_commands())
