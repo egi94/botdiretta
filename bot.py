@@ -64,13 +64,41 @@ def send_telegram_message(text: str, auto_delete_sec=None):
     except: return None
 
 def send_long_message(text: str, max_len=3500):
-    if len(text) <= max_len: send_telegram_message(text); return
-    for i in range(0, len(text), max_len):
-        chunk = text[i:i+max_len]
-        if i + max_len < len(text) and "\n" in chunk:
-            last_newline = chunk.rfind("\n")
-            if last_newline > max_len*0.7: chunk = chunk[:last_newline]
-        send_telegram_message(chunk.strip())
+    if len(text) <= max_len:
+        send_telegram_message(text)
+        return
+    # FIX: spezza per blocchi (una partita = un blocco separato da \n\n)
+    # così non si perde mai il pezzo tra chunk accorciato e i+max_len
+    blocks = text.split("\n\n")
+    current = ""
+    for block in blocks:
+        if not block.strip():
+            continue
+        piece = block + "\n\n"
+        # blocco singolo troppo lungo: spezza per righe, mai a metà riga
+        if len(piece) > max_len:
+            if current.strip():
+                send_telegram_message(current.strip())
+                current = ""
+            lines = piece.splitlines(True)
+            buf = ""
+            for ln in lines:
+                if len(buf) + len(ln) > max_len:
+                    if buf.strip():
+                        send_telegram_message(buf.strip())
+                    buf = ln
+                else:
+                    buf += ln
+            if buf.strip():
+                send_telegram_message(buf.strip())
+            continue
+        if len(current) + len(piece) > max_len:
+            send_telegram_message(current.strip())
+            current = piece
+        else:
+            current += piece
+    if current.strip():
+        send_telegram_message(current.strip())
 
 def send_ics_file(file_path):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendDocument"
@@ -302,7 +330,10 @@ def list_matches_by_status(color: str):
         send_telegram_message(f"Nessuna partita con stato {wanted_emoji} {color.upper()}", auto_delete_sec=AUTO_DELETE_SECONDS)
         return
     filtered.sort(key=lambda x: x[0])
-    title = f"{wanted_emoji} Partite {color.upper()} ({len(filtered)}):\n\n"
+    if color == "green":
+        title = f"✅ PARTITE CONFERMATE: ({len(filtered)})\n\n"
+    else:
+        title = f"{wanted_emoji} Partite {color.upper()} ({len(filtered)}):\n\n"
     text = title
     for _, date_str, time_str, vs, link in filtered:
         emoji = get_sport_emoji(vs.split(" vs ")[0] if " vs " in vs else vs)
