@@ -2,6 +2,7 @@ import os, json, asyncio, requests, threading, re, time
 from playwright.async_api import async_playwright
 from dotenv import load_dotenv
 from datetime import datetime, timedelta
+from PIL import Image, ImageDraw, ImageFont
 load_dotenv()
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
@@ -48,7 +49,6 @@ def send_telegram_message(text: str, auto_delete_sec=None):
     if not TELEGRAM_TOKEN or not CHAT_ID: return
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     try:
-        # FIX: niente parse_mode Markdown - i link con _ (match_id, en_GB) facevano fallire il 1° pezzo in silenzio
         r = requests.post(url, json={"chat_id": CHAT_ID, "text": text, "disable_web_page_preview": True}, timeout=10)
         if r.status_code != 200:
             print(f"❌ Telegram error {r.status_code}: {r.text[:500]} | inizio={text[:120]!r}")
@@ -72,7 +72,6 @@ def send_long_message(text: str, max_len=3500):
     if len(text) <= max_len:
         send_telegram_message(text)
         return
-    # FIX: spezza per blocchi (una partita = un blocco separato da \n\n)
     blocks = text.split("\n\n")
     chunks = []
     current = ""
@@ -112,6 +111,112 @@ def send_long_message(text: str, max_len=3500):
 def send_ics_file(file_path):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendDocument"
     with open(file_path, "rb") as f: requests.post(url, data={"chat_id": CHAT_ID}, files={"document": f})
+
+# --- SOLO AGGIUNTA FOTO, NON TOCCA LA LOGICA ESISTENTE ---
+def send_telegram_photo(file_path, caption=""):
+    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendPhoto"
+    try:
+        with open(file_path, "rb") as f:
+            r = requests.post(url, data={"chat_id": CHAT_ID, "caption": caption}, files={"photo": f}, timeout=20)
+            if r.status_code != 200:
+                print(f"❌ Foto error {r.status_code}: {r.text[:500]}")
+                return None
+        return r.json().get("result", {}).get("message_id")
+    except Exception as e:
+        print(f"❌ Errore foto: {e}")
+        return None
+
+def create_calendar_image(mode="all", title="TUTTE LE PARTITE"):
+    data = load_matches()
+    status_map = data.get("status", {})
+    blacklist = data.get("blacklist", [])
+    all_matches = []
+    for v in data.get("matches", {}).values():
+        all_matches.extend(v)
+    all_matches.extend(data.get("manual", []))
+    today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    matches_by_day = {}
+    total = 0
+    seen_links = set()
+    for m in all_matches:
+        link = get_match_key(m)
+        if not link or link in blacklist or link in seen_links:
+            continue
+        seen_links.add(link)
+        lines = m.split("\n")
+        if len(lines) < 4:
+            continue
+        dt = parse_italian_formatted_date(lines[0].replace("📅", "").strip(), lines[1].replace("🕒", "").strip())
+        if not dt or dt < today or dt >= today + timedelta(days=28):
+            continue
+        emoji = get_status_emoji(link, status_map)
+        if mode == "green" and emoji != "🟢":
+            continue
+        vs = lines[2].replace("➡️", "").strip()
+        time_str = lines[1].replace("🕒", "").strip()
+        matches_by_day.setdefault(dt.date(), []).append((time_str, vs, emoji))
+        total += 1
+    W, H = 1400, 950
+    img = Image.new("RGB", (W, H), "white")
+    draw = ImageDraw.Draw(img)
+    try:
+        font_title = ImageFont.truetype("DejaVuSans-Bold.ttf", 28)
+        font_sub = ImageFont.truetype("DejaVuSans.ttf", 18)
+        font_day = ImageFont.truetype("DejaVuSans-Bold.ttf", 19)
+        font_match = ImageFont.truetype("DejaVuSans.ttf", 15)
+    except:
+        font_title = ImageFont.load_default()
+        font_sub = font_title
+        font_day = font_title
+        font_match = font_title
+    draw.text((30, 15), title, fill="black", font=font_title)
+    draw.text((30, 55), f"Prossimi 28 giorni - {total} partite", fill="#666666", font=font_sub)
+    if mode == "all":
+        draw.rounded_rectangle([30, 85, 55, 105], radius=5, fill="#22c55e")
+        draw.text((65, 83), "Confermata", fill="black", font=font_match)
+        draw.rounded_rectangle([210, 85, 235, 105], radius=5, fill="#eab308")
+        draw.text((245, 83), "Da confermare", fill="black", font=font_match)
+        draw.rounded_rectangle([410, 85, 435, 105], radius=5, fill="#ef4444")
+        draw.text((445, 83), "Annullata / No", fill="black", font=font_match)
+        draw.rounded_rectangle([610, 85, 635, 105], radius=5, fill="#a855f7")
+        draw.text((645, 83), "Da vedere", fill="black", font=font_match)
+    else:
+        draw.rounded_rectangle([30, 85, 55, 105], radius=5, fill="#22c55e")
+        draw.text((65, 83), "Confermata", fill="black", font=font_match)
+    start = today
+    cell_w = (W - 60) // 7
+    cell_h = 175
+    top = 125
+    headers = ["LUN", "MAR", "MER", "GIO", "VEN", "SAB", "DOM"]
+    for col, h in enumerate(headers):
+        draw.text((30 + col * cell_w + 10, top), h, fill="#666666", font=font_day)
+    top += 32
+    colors = {"🟢": "#22c55e", "🟡": "#eab308", "🔴": "#ef4444", "🟣": "#a855f7"}
+    for week in range(4):
+        for col in range(7):
+            day = start + timedelta(days=week * 7 + col)
+            x = 30 + col * cell_w
+            y = top + week * cell_h
+            is_today = day.date() == datetime.now().date()
+            draw.rectangle([x, y, x + cell_w - 5, y + cell_h - 5], outline="#4285F4" if is_today else "#DDDDDD", width=2 if is_today else 1, fill="#F8F9FA" if is_today else "white")
+            draw.text((x + 8, y + 6), f"{day.day} {ITALIAN_MONTHS[day.month-1][:3]}", fill="black", font=font_day)
+            day_matches = sorted(matches_by_day.get(day.date(), []))
+            my = y + 34
+            for time_str, vs, emoji in day_matches[:4]:
+                color = colors.get(emoji, "#eab308")
+                text_color = "white" if emoji in ("🟢", "🔴", "🟣") else "black"
+                draw.rounded_rectangle([x + 8, my, x + cell_w - 13, my + 26], radius=6, fill=color)
+                label = f"{time_str} {vs}"
+                if len(label) > 23:
+                    label = label[:21] + ".."
+                draw.text((x + 14, my + 4), label, fill=text_color, font=font_match)
+                my += 32
+            if len(day_matches) > 4:
+                draw.text((x + 8, my), f"+{len(day_matches)-4} altre...", fill="#666666", font=font_match)
+    filename = f"calendario_{mode}.png"
+    img.save(filename)
+    return filename, total
+# --- FINE AGGIUNTA FOTO ---
 
 def load_matches():
     if not os.path.exists(MATCHES_FILE): return {"matches": {}, "manual": [], "blacklist": [], "status": {}}
@@ -303,10 +408,7 @@ def clear_match_status(inp: str):
         elif "pid=" in target_link and f"pid={target_link.split('pid=')[1].split('&')[0]}" in k:
             del data["status"][k]
     save_matches(data)
-    send_telegram_message(
-        f"✅ Stato rimosso, torna a {DEFAULT_STATUS}\n{target_vs or target_link}",
-        auto_delete_sec=AUTO_DELETE_SECONDS
-    )
+    send_telegram_message(f"✅ Stato rimosso, torna a {DEFAULT_STATUS}\n{target_vs or target_link}", auto_delete_sec=AUTO_DELETE_SECONDS)
 
 def list_matches_by_status(color: str):
     data = load_matches()
@@ -316,7 +418,6 @@ def list_matches_by_status(color: str):
     for v in data.get("matches", {}).values():
         all_matches.extend(v)
     all_matches.extend(data.get("manual", []))
-
     def _mid(link: str):
         if "mid=" in link:
             try: return link.split("mid=")[1].split("&")[0]
@@ -325,7 +426,6 @@ def list_matches_by_status(color: str):
             try: return "pid:" + link.split("pid=")[1].split("&")[0]
             except: return ""
         return ""
-
     match_by_mid = {}
     match_by_link = {}
     for m in all_matches:
@@ -336,13 +436,10 @@ def list_matches_by_status(color: str):
         mid = _mid(link)
         if mid:
             match_by_mid[mid] = m
-
     today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
     seen_mid = set()
     seen_link = set()
     filtered = []
-
-    # Parti da STATUS, così prendi anche le orfane, ma solo FUTURE
     for raw_key, emoji in list(status_map.items()):
         if emoji != wanted_emoji:
             continue
@@ -355,13 +452,11 @@ def list_matches_by_status(color: str):
         if mid:
             seen_mid.add(mid)
         seen_link.add(nkey)
-
         m = match_by_mid.get(mid) if mid else None
         if not m:
             m = match_by_link.get(nkey)
         if not m:
-            continue  # orfana senza partita / senza data -> saltiamo, niente passate
-
+            continue
         lines = m.split("\n")
         if len(lines) < 4:
             continue
@@ -370,11 +465,9 @@ def list_matches_by_status(color: str):
         vs = lines[2].replace("➡️", "").strip()
         link = get_match_key(m)
         dt = parse_italian_formatted_date(date_str, time_str)
-        if not dt or dt < today:  # SOLO FUTURE
+        if not dt or dt < today:
             continue
         filtered.append((dt, date_str, time_str, vs, link))
-
-    # Solo per yellow: aggiungi anche quelle senza stato esplicito, solo future
     if color == "yellow":
         for m in all_matches:
             link = get_match_key(m)
@@ -394,22 +487,17 @@ def list_matches_by_status(color: str):
             if not dt or dt < today:
                 continue
             filtered.append((dt, date_str, time_str, vs, link))
-
     if not filtered:
         send_telegram_message(f"Nessuna partita futura con stato {wanted_emoji} {color.upper()}", auto_delete_sec=AUTO_DELETE_SECONDS)
         return
-
     filtered.sort(key=lambda x: x[0])
-
-    # FIX: titolo da SOLO, così non muore mai insieme al 1° pezzo
+    # --- LOGICA TESTO INVARIATA ---
     if color == "green":
         title = f"✅ PARTITE CONFERMATE: ({len(filtered)})"
     else:
         title = f"{wanted_emoji} Partite {color.upper()} ({len(filtered)}):"
     send_telegram_message(title)
     time.sleep(0.3)
-
-    # FIX: batch da 5 partite, non più un testo gigante da 3500 caratteri
     batch = ""
     count = 0
     total_batches = (len(filtered) + 4) // 5
@@ -426,6 +514,16 @@ def list_matches_by_status(color: str):
             time.sleep(0.5)
     if batch.strip():
         send_telegram_message(f"({batch_idx}/{total_batches})\n{batch.strip()}")
+    # --- AGGIUNTA SOLO FOTO A PARTE, SOLO PER GREEN, NON ALTERA LA LISTA ---
+    if color == "green":
+        try:
+            time.sleep(0.5)
+            img_path, total = create_calendar_image(mode="green", title="PARTITE CONFERMATE")
+            send_telegram_photo(img_path, caption=f"PARTITE CONFERMATE ({total})")
+            if os.path.exists(img_path):
+                os.remove(img_path)
+        except Exception as e:
+            print(f"❌ Errore foto green: {e}")
 
 async def extract_matches(url: str):
     async with async_playwright() as p:
@@ -534,10 +632,8 @@ async def mod_match_manual_custom(raw_command: str):
         payload = payload.replace("\n", " ").replace("\r", " ")
         payload = " ".join(payload.split())
         parts = [p.strip() for p in re.split(r'\s+-\s+', payload) if p.strip()]
-
         home = away = datetime_raw = None
         new_link = None
-
         if len(parts) >= 2 and " vs " in parts[0].lower():
             m = re.split(r'\s+vs\s+', parts[0], flags=re.IGNORECASE)
             if len(m) == 2:
@@ -553,26 +649,21 @@ async def mod_match_manual_custom(raw_command: str):
                 new_link = parts[3]
         else:
             send_telegram_message("❌ Formato errato\nUsa: /modmanual Casa - Trasferta - 07/04/2027 21:00 - https://...\nOppure: /modmanual Casa vs Trasferta - 07/04/2027 21:00 - https://...", auto_delete_sec=AUTO_DELETE_SECONDS); return
-
         if datetime_raw and "http" in datetime_raw:
             split_http = datetime_raw.split("http")
             datetime_raw = split_http[0].strip().rstrip("-").strip()
             if not new_link:
                 new_link = "http" + "http".join(split_http[1:])
-
         if datetime_raw:
             datetime_raw = datetime_raw.rstrip("-").strip()
-
         if not home or not away or not datetime_raw:
             send_telegram_message("❌ Formato errato\nUsa: /modmanual Casa - Trasferta - 07/04/2027 21:00 - https://...", auto_delete_sec=AUTO_DELETE_SECONDS); return
-
         new_link = normalize_link(new_link) if new_link else None
         vs_search = normalize_vs(f"{home} vs {away}")
         data = load_matches()
         manual_list = data.get("manual", [])
         found_idx = -1
         old_match_str = None
-
         for idx, m in enumerate(manual_list):
             vs = get_match_vs(m)
             if not vs: continue
@@ -583,15 +674,12 @@ async def mod_match_manual_custom(raw_command: str):
                 vs = get_match_vs(m)
                 if vs_search in normalize_vs(vs):
                     found_idx = idx; old_match_str = m; break
-
         if found_idx == -1:
             send_telegram_message(f"❌ Partita manuale non trovata: {home} vs {away}", auto_delete_sec=AUTO_DELETE_SECONDS); return
-
         lines = old_match_str.split("\n")
         old_date_str = lines[0].replace("📅","").strip() if len(lines)>0 else ""
         old_time_str = lines[1].replace("🕒","").strip() if len(lines)>1 else ""
         old_link = get_match_key(old_match_str)
-
         formatted_date, formatted_time = format_match_date(datetime_raw)
         if all(day not in formatted_date for day in ITALIAN_DAYS):
             dt = None
@@ -603,31 +691,24 @@ async def mod_match_manual_custom(raw_command: str):
                 formatted_time = dt.strftime("%H:%M")
             else:
                 send_telegram_message(f"❌ Data non valida: {datetime_raw}", auto_delete_sec=AUTO_DELETE_SECONDS); return
-
         final_link = new_link if new_link else old_link
         new_match_str = f"📅 {formatted_date}\n🕒 {formatted_time}\n➡️ {home} vs {away}\n🔗 {final_link}"
-
         manual_list[found_idx] = new_match_str
         data["manual"] = manual_list
-        # FIX FIX: migra stato e rimuovi blacklist + aggiorna TUTTE le chiavi status con old_link
         if final_link!= old_link:
             if old_link in data.get("status", {}):
                 data["status"][final_link] = data["status"][old_link]
-            # mantiene anche la versione normalizzata
             data["status"][normalize_link(final_link)] = data.get("status", {}).get(old_link, data.get("status", {}).get(normalize_link(old_link), DEFAULT_STATUS))
             if old_link in data.get("blacklist", []):
                 data["blacklist"].remove(old_link)
         save_matches(data)
-
         ics_file = create_ics_event(home, away, formatted_date, formatted_time, final_link, get_sport_emoji(home) == "🤽‍♂️")
         if ics_file:
             try: send_ics_file(ics_file); os.remove(ics_file)
             except: pass
-
         emoji = get_sport_emoji(home)
         msg = f"⏰! VARIAZIONE! ⏰\n\n{emoji} Squadra: {home.upper()}\nVecchio: {old_date_str} {old_time_str}\nNuovo: {formatted_date} {formatted_time}\n➡️ {home} vs {away}\n🔗 {final_link}"
         send_telegram_message(msg)
-
     except Exception as e:
         send_telegram_message(f"❌ Errore /modmanual: {e}", auto_delete_sec=AUTO_DELETE_SECONDS)
 
@@ -661,20 +742,16 @@ async def read_pending_commands():
                 line=raw_lines[i].strip()
                 if not line: i+=1; continue
                 low_line = line.lower()
-                # FIX: include /modmanual e /addmanual nel ricucitura link spezzato
                 if low_line.startswith(("/green ","/red ","/purple ","/yellow ","/clearstatus ","/nogreen ","/removematch ","/addmatch ","/addmanual ","/modmanual ")):
                     full_cmd = line
-                    # caso tuo: "/modmanual... -" + riga dopo è il link
                     if "http" not in low_line and i+1 < len(raw_lines) and "http" in raw_lines[i+1].lower():
                         full_cmd = line + " " + raw_lines[i+1].strip()
                         i+=1
-                    # ricuci eventuali &pid= spezzati su righe successive
                     j=i+1
                     while j < len(raw_lines):
                         nxt=raw_lines[j].strip()
                         if not nxt or nxt.startswith("/"): break
                         if "&" in nxt or "pid=" in nxt or "season=" in nxt or "match_id=" in nxt or "=" in nxt:
-                            # evita di attaccare altro comando
                             if "http" not in nxt.lower():
                                 full_cmd += nxt
                                 j+=1
@@ -685,7 +762,6 @@ async def read_pending_commands():
                     stitched.append(full_cmd.strip())
                     i=j
                 else:
-                    # se è un link isolato ma il precedente era modmanual, saltalo (già ricucito)
                     if "http" in low_line and stitched and stitched[-1].lower().startswith(("/modmanual","/addmanual")) and "http" not in stitched[-1].lower():
                         stitched[-1] = stitched[-1] + " " + line.strip()
                     else:
@@ -697,6 +773,17 @@ async def read_pending_commands():
                 elif low == "/allyellow" or low.startswith("/allyellow "): list_matches_by_status("yellow")
                 elif low == "/allred" or low.startswith("/allred "): list_matches_by_status("red")
                 elif low == "/allpurple" or low.startswith("/allpurple "): list_matches_by_status("purple")
+                elif low == "/calendario" or low == "/cal":
+                    try:
+                        img_all, tot_all = create_calendar_image(mode="all", title="TUTTE LE PARTITE")
+                        send_telegram_photo(img_all, caption=f"TUTTE LE PARTITE ({tot_all})")
+                        if os.path.exists(img_all): os.remove(img_all)
+                        time.sleep(0.5)
+                        img_green, tot_green = create_calendar_image(mode="green", title="PARTITE CONFERMATE")
+                        send_telegram_photo(img_green, caption=f"PARTITE CONFERMATE ({tot_green})")
+                        if os.path.exists(img_green): os.remove(img_green)
+                    except Exception as e:
+                        send_telegram_message(f"❌ Errore calendario: {e}")
                 elif low.startswith("/green "): set_match_status(text.split(maxsplit=1)[1], "green")
                 elif low.startswith("/red "): set_match_status(text.split(maxsplit=1)[1], "red")
                 elif low.startswith("/purple "): set_match_status(text.split(maxsplit=1)[1], "purple")
@@ -794,9 +881,21 @@ async def main():
     riepilogo+="───────────────────────────────\n🔄 Scansione completata\n"
     riepilogo+=f"Nuove partite trovate: {total_new_matches}\n"
     riepilogo+=f"⏰ {timestamp.strftime('%H:%M')} | {timestamp.strftime('%A %d %B')}"
-    # Senza Markdown gli * si vedrebbero, li togliamo
     riepilogo = riepilogo.replace("*", "")
+    # LOGICA TESTO INVARIATA
     send_long_message(riepilogo)
+    # --- AGGIUNTA SOLO FOTO A PARTE, DOPO IL TESTO ---
+    try:
+        time.sleep(0.5)
+        img_all, tot_all = create_calendar_image(mode="all", title="TUTTE LE PARTITE")
+        send_telegram_photo(img_all, caption=f"TUTTE LE PARTITE ({tot_all})")
+        if os.path.exists(img_all): os.remove(img_all)
+        time.sleep(0.5)
+        img_green, tot_green = create_calendar_image(mode="green", title="PARTITE CONFERMATE")
+        send_telegram_photo(img_green, caption=f"PARTITE CONFERMATE ({tot_green})")
+        if os.path.exists(img_green): os.remove(img_green)
+    except Exception as e:
+        print(f"❌ Errore foto calendario: {e}")
 
 if __name__ == "__main__":
     asyncio.run(read_pending_commands())
