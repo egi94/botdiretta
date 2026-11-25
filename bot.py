@@ -1,4 +1,4 @@
-import os, json, asyncio, requests, threading, re
+import os, json, asyncio, requests, threading, re, time
 from playwright.async_api import async_playwright
 from dotenv import load_dotenv
 from datetime import datetime, timedelta
@@ -48,8 +48,11 @@ def send_telegram_message(text: str, auto_delete_sec=None):
     if not TELEGRAM_TOKEN or not CHAT_ID: return
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     try:
-        r = requests.post(url, json={"chat_id": CHAT_ID, "text": text, "disable_web_page_preview": True, "parse_mode": "Markdown"}, timeout=10)
-        if r.status_code!=200: return None
+        # FIX: niente parse_mode Markdown - i link con _ (match_id, en_GB) facevano fallire il 1° pezzo in silenzio
+        r = requests.post(url, json={"chat_id": CHAT_ID, "text": text, "disable_web_page_preview": True}, timeout=10)
+        if r.status_code != 200:
+            print(f"❌ Telegram error {r.status_code}: {r.text[:500]} | inizio={text[:120]!r}")
+            return None
         msg_id = r.json().get("result", {}).get("message_id")
         if auto_delete_sec and msg_id:
             def _delete():
@@ -61,44 +64,50 @@ def send_telegram_message(text: str, auto_delete_sec=None):
             timer.daemon = True
             timer.start()
         return msg_id
-    except: return None
+    except Exception as e:
+        print(f"❌ Errore send_telegram: {e}")
+        return None
 
 def send_long_message(text: str, max_len=3500):
     if len(text) <= max_len:
         send_telegram_message(text)
         return
     # FIX: spezza per blocchi (una partita = un blocco separato da \n\n)
-    # così non si perde mai il pezzo tra chunk accorciato e i+max_len
     blocks = text.split("\n\n")
+    chunks = []
     current = ""
     for block in blocks:
         if not block.strip():
             continue
         piece = block + "\n\n"
-        # blocco singolo troppo lungo: spezza per righe, mai a metà riga
         if len(piece) > max_len:
             if current.strip():
-                send_telegram_message(current.strip())
+                chunks.append(current.strip())
                 current = ""
             lines = piece.splitlines(True)
             buf = ""
             for ln in lines:
                 if len(buf) + len(ln) > max_len:
                     if buf.strip():
-                        send_telegram_message(buf.strip())
+                        chunks.append(buf.strip())
                     buf = ln
                 else:
                     buf += ln
             if buf.strip():
-                send_telegram_message(buf.strip())
+                chunks.append(buf.strip())
             continue
         if len(current) + len(piece) > max_len:
-            send_telegram_message(current.strip())
+            chunks.append(current.strip())
             current = piece
         else:
             current += piece
     if current.strip():
-        send_telegram_message(current.strip())
+        chunks.append(current.strip())
+    total = len(chunks)
+    for idx, chunk in enumerate(chunks, start=1):
+        labeled = f"({idx}/{total})\n{chunk}" if total > 1 else chunk
+        send_telegram_message(labeled)
+        time.sleep(0.5)
 
 def send_ics_file(file_path):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendDocument"
@@ -307,38 +316,116 @@ def list_matches_by_status(color: str):
     for v in data.get("matches", {}).values():
         all_matches.extend(v)
     all_matches.extend(data.get("manual", []))
-    seen = set()
-    filtered = []
+
+    def _mid(link: str):
+        if "mid=" in link:
+            try: return link.split("mid=")[1].split("&")[0]
+            except: return ""
+        if "pid=" in link:
+            try: return "pid:" + link.split("pid=")[1].split("&")[0]
+            except: return ""
+        return ""
+
+    match_by_mid = {}
+    match_by_link = {}
     for m in all_matches:
         link = get_match_key(m)
-        if not link or link in seen:
+        if not link:
             continue
-        seen.add(link)
-        emoji = get_status_emoji(link, status_map)
+        match_by_link[normalize_link(link)] = m
+        mid = _mid(link)
+        if mid:
+            match_by_mid[mid] = m
+
+    today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    seen_mid = set()
+    seen_link = set()
+    filtered = []
+
+    # Parti da STATUS, così prendi anche le orfane, ma solo FUTURE
+    for raw_key, emoji in list(status_map.items()):
         if emoji != wanted_emoji:
             continue
+        nkey = normalize_link(raw_key)
+        mid = _mid(nkey)
+        if mid and mid in seen_mid:
+            continue
+        if nkey in seen_link:
+            continue
+        if mid:
+            seen_mid.add(mid)
+        seen_link.add(nkey)
+
+        m = match_by_mid.get(mid) if mid else None
+        if not m:
+            m = match_by_link.get(nkey)
+        if not m:
+            continue  # orfana senza partita / senza data -> saltiamo, niente passate
+
         lines = m.split("\n")
         if len(lines) < 4:
             continue
         date_str = lines[0].replace("📅", "").strip()
         time_str = lines[1].replace("🕒", "").strip()
         vs = lines[2].replace("➡️", "").strip()
+        link = get_match_key(m)
         dt = parse_italian_formatted_date(date_str, time_str)
-        sort_key = dt if dt else datetime(2100, 1, 1)
-        filtered.append((sort_key, date_str, time_str, vs, link))
+        if not dt or dt < today:  # SOLO FUTURE
+            continue
+        filtered.append((dt, date_str, time_str, vs, link))
+
+    # Solo per yellow: aggiungi anche quelle senza stato esplicito, solo future
+    if color == "yellow":
+        for m in all_matches:
+            link = get_match_key(m)
+            if not link:
+                continue
+            if get_status_emoji(link, status_map) != wanted_emoji:
+                continue
+            if normalize_link(link) in seen_link or _mid(link) in seen_mid:
+                continue
+            lines = m.split("\n")
+            if len(lines) < 4:
+                continue
+            date_str = lines[0].replace("📅", "").strip()
+            time_str = lines[1].replace("🕒", "").strip()
+            vs = lines[2].replace("➡️", "").strip()
+            dt = parse_italian_formatted_date(date_str, time_str)
+            if not dt or dt < today:
+                continue
+            filtered.append((dt, date_str, time_str, vs, link))
+
     if not filtered:
-        send_telegram_message(f"Nessuna partita con stato {wanted_emoji} {color.upper()}", auto_delete_sec=AUTO_DELETE_SECONDS)
+        send_telegram_message(f"Nessuna partita futura con stato {wanted_emoji} {color.upper()}", auto_delete_sec=AUTO_DELETE_SECONDS)
         return
+
     filtered.sort(key=lambda x: x[0])
+
+    # FIX: titolo da SOLO, così non muore mai insieme al 1° pezzo
     if color == "green":
-        title = f"✅ PARTITE CONFERMATE: ({len(filtered)})\n\n"
+        title = f"✅ PARTITE CONFERMATE: ({len(filtered)})"
     else:
-        title = f"{wanted_emoji} Partite {color.upper()} ({len(filtered)}):\n\n"
-    text = title
+        title = f"{wanted_emoji} Partite {color.upper()} ({len(filtered)}):"
+    send_telegram_message(title)
+    time.sleep(0.3)
+
+    # FIX: batch da 5 partite, non più un testo gigante da 3500 caratteri
+    batch = ""
+    count = 0
+    total_batches = (len(filtered) + 4) // 5
+    batch_idx = 1
     for _, date_str, time_str, vs, link in filtered:
         emoji = get_sport_emoji(vs.split(" vs ")[0] if " vs " in vs else vs)
-        text += f"{emoji} {date_str} - {time_str}\n{vs} - {wanted_emoji}\n🔗 {link}\n\n"
-    send_long_message(text)
+        batch += f"{emoji} {date_str} - {time_str}\n{vs} - {wanted_emoji}\n🔗 {link}\n\n"
+        count += 1
+        if count >= 5:
+            send_telegram_message(f"({batch_idx}/{total_batches})\n{batch.strip()}")
+            batch = ""
+            count = 0
+            batch_idx += 1
+            time.sleep(0.5)
+    if batch.strip():
+        send_telegram_message(f"({batch_idx}/{total_batches})\n{batch.strip()}")
 
 async def extract_matches(url: str):
     async with async_playwright() as p:
@@ -707,6 +794,8 @@ async def main():
     riepilogo+="───────────────────────────────\n🔄 Scansione completata\n"
     riepilogo+=f"Nuove partite trovate: {total_new_matches}\n"
     riepilogo+=f"⏰ {timestamp.strftime('%H:%M')} | {timestamp.strftime('%A %d %B')}"
+    # Senza Markdown gli * si vedrebbero, li togliamo
+    riepilogo = riepilogo.replace("*", "")
     send_long_message(riepilogo)
 
 if __name__ == "__main__":
