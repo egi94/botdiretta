@@ -214,6 +214,101 @@ def set_match_status(inp: str, color: str):
         msg = f"{emoji} Stato {color.upper()} impostato\n{emoji} {target_link}"
     send_telegram_message(msg, auto_delete_sec=AUTO_DELETE_SECONDS)
 
+def clear_match_status(inp: str):
+    inp_raw = inp.strip()
+    is_link = inp_raw.startswith("http")
+    data = load_matches()
+    if "status" not in data:
+        data["status"] = {}
+    all_matches = []
+    for v in data.get("matches", {}).values():
+        all_matches.extend(v)
+    all_matches.extend(data.get("manual", []))
+    target_link = None
+    target_vs = ""
+    if is_link:
+        nlink = normalize_link(inp_raw)
+        for m in all_matches:
+            stored = get_match_key(m)
+            if not stored:
+                continue
+            if stored == nlink or nlink in stored or stored in nlink:
+                target_link = stored
+                target_vs = get_match_vs(m)
+                break
+            if "pid=" in nlink and "pid=" in stored and nlink.split("pid=")[1].split("&")[0] == stored.split("pid=")[1].split("&")[0]:
+                target_link = stored
+                target_vs = get_match_vs(m)
+                break
+        if not target_link:
+            target_link = nlink
+    else:
+        vs_input = normalize_vs(inp_raw)
+        for m in all_matches:
+            vs = get_match_vs(m)
+            if vs and normalize_vs(vs) == vs_input:
+                target_link = get_match_key(m)
+                target_vs = vs
+                break
+        if not target_link:
+            for m in all_matches:
+                vs = get_match_vs(m)
+                if vs and vs_input in normalize_vs(vs):
+                    target_link = get_match_key(m)
+                    target_vs = vs
+                    break
+    if not target_link:
+        send_telegram_message(f"❌ Non trovata: {inp_raw}", auto_delete_sec=AUTO_DELETE_SECONDS)
+        return
+    for k in list(data["status"].keys()):
+        if k == target_link or k == normalize_link(target_link) or k == normalize_link(inp_raw):
+            del data["status"][k]
+        elif "pid=" in target_link and f"pid={target_link.split('pid=')[1].split('&')[0]}" in k:
+            del data["status"][k]
+    save_matches(data)
+    send_telegram_message(
+        f"✅ Stato rimosso, torna a {DEFAULT_STATUS}\n{target_vs or target_link}",
+        auto_delete_sec=AUTO_DELETE_SECONDS
+    )
+
+def list_matches_by_status(color: str):
+    data = load_matches()
+    status_map = data.get("status", {})
+    wanted_emoji = STATUS_EMOJI.get(color, DEFAULT_STATUS)
+    all_matches = []
+    for v in data.get("matches", {}).values():
+        all_matches.extend(v)
+    all_matches.extend(data.get("manual", []))
+    seen = set()
+    filtered = []
+    for m in all_matches:
+        link = get_match_key(m)
+        if not link or link in seen:
+            continue
+        seen.add(link)
+        emoji = get_status_emoji(link, status_map)
+        if emoji != wanted_emoji:
+            continue
+        lines = m.split("\n")
+        if len(lines) < 4:
+            continue
+        date_str = lines[0].replace("📅", "").strip()
+        time_str = lines[1].replace("🕒", "").strip()
+        vs = lines[2].replace("➡️", "").strip()
+        dt = parse_italian_formatted_date(date_str, time_str)
+        sort_key = dt if dt else datetime(2100, 1, 1)
+        filtered.append((sort_key, date_str, time_str, vs, link))
+    if not filtered:
+        send_telegram_message(f"Nessuna partita con stato {wanted_emoji} {color.upper()}", auto_delete_sec=AUTO_DELETE_SECONDS)
+        return
+    filtered.sort(key=lambda x: x[0])
+    title = f"{wanted_emoji} Partite {color.upper()} ({len(filtered)}):\n\n"
+    text = title
+    for _, date_str, time_str, vs, link in filtered:
+        emoji = get_sport_emoji(vs.split(" vs ")[0] if " vs " in vs else vs)
+        text += f"{emoji} {date_str} - {time_str}\n{vs} - {wanted_emoji}\n🔗 {link}\n\n"
+    send_long_message(text)
+
 async def extract_matches(url: str):
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True, args=["--disable-blink-features=AutomationControlled", "--no-sandbox", "--disable-dev-shm-usage"])
@@ -449,7 +544,7 @@ async def read_pending_commands():
                 if not line: i+=1; continue
                 low_line = line.lower()
                 # FIX: include /modmanual e /addmanual nel ricucitura link spezzato
-                if low_line.startswith(("/green ","/red ","/purple ","/yellow ","/removematch ","/addmatch ","/addmanual ","/modmanual ")):
+                if low_line.startswith(("/green ","/red ","/purple ","/yellow ","/clearstatus ","/nogreen ","/removematch ","/addmatch ","/addmanual ","/modmanual ")):
                     full_cmd = line
                     # caso tuo: "/modmanual... -" + riga dopo è il link
                     if "http" not in low_line and i+1 < len(raw_lines) and "http" in raw_lines[i+1].lower():
@@ -480,10 +575,16 @@ async def read_pending_commands():
                     i+=1
             for text in stitched:
                 low=text.lower()
-                if low.startswith("/green "): set_match_status(text.split(maxsplit=1)[1], "green")
+                if low == "/allgreen" or low.startswith("/allgreen "): list_matches_by_status("green")
+                elif low == "/allyellow" or low.startswith("/allyellow "): list_matches_by_status("yellow")
+                elif low == "/allred" or low.startswith("/allred "): list_matches_by_status("red")
+                elif low == "/allpurple" or low.startswith("/allpurple "): list_matches_by_status("purple")
+                elif low.startswith("/green "): set_match_status(text.split(maxsplit=1)[1], "green")
                 elif low.startswith("/red "): set_match_status(text.split(maxsplit=1)[1], "red")
                 elif low.startswith("/purple "): set_match_status(text.split(maxsplit=1)[1], "purple")
                 elif low.startswith("/yellow "): set_match_status(text.split(maxsplit=1)[1], "yellow")
+                elif low.startswith("/clearstatus "): clear_match_status(text.split(maxsplit=1)[1])
+                elif low.startswith("/nogreen "): clear_match_status(text.split(maxsplit=1)[1])
                 elif text.startswith("/addmanual "): await add_match_manual_custom(text)
                 elif text.startswith("/modmanual "): await mod_match_manual_custom(text)
                 elif text.startswith("/addmatch "): await add_match_manually(text.split(maxsplit=1)[1])
